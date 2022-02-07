@@ -19,13 +19,23 @@ import io.ktor.http.*
 import io.ktor.response.*
 import kotlinx.coroutines.delay
 
-data class SseEvent(val data: String, val event: String? = null, val id: String? = null)
+enum class EventType {
+    MESSAGE, EVENT, CLOSE, ERROR, KEEP_ALIVE;
+
+    override fun toString(): String {
+        return super.toString().toLowerCase()
+    }
+}
+
+data class SseEvent(val data: String, val event: EventType? = null, val id: String? = null)
 
 fun sseEventsFromList(list: List<String>): List<SseEvent> {
     val sseEventList: MutableList<SseEvent> = mutableListOf()
+    var id = 0
     list.forEach {
-        val event = SseEvent(it)
+        val event = SseEvent(it, EventType.MESSAGE, id.toString())
         sseEventList.add(event)
+        id++
     }
     return  sseEventList
 }
@@ -47,5 +57,12 @@ suspend fun ApplicationCall.respondSse(events: List<SseEvent>) {
             delay(1000)
             flush()
         }
+
+        println("close")
+        write("id: ${events.last().id?.toInt()?.plus(1)}\n")
+        write("event: close\n")
+        write("data: empty data\n")
+        flush()
+        close()
     }
 }

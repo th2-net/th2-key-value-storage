@@ -30,6 +30,7 @@ class HttpServer {
 
     private val COLLECTION: String = "collection"
     private val ID: String = "id"
+    private val PAYLOAD: String = "payload"
     private val WORKSPACE_LINKS: String = "workspace_links"
 
     fun run() {
@@ -109,6 +110,10 @@ class HttpServer {
                     call.respond(HttpStatusCode.OK, "Hi! There is an empty response...")
                 }
 
+                get("/delete") {
+                    call.respond(HttpStatusCode.OK, "Delete")
+                }
+
                 get("/getWorkspaceLink") {
                     if (cassandraConnector.isCollectionExists(WORKSPACE_LINKS)) {
                         if (call.parameters.contains(ID)) {
@@ -129,49 +134,45 @@ class HttpServer {
 
                 post("/store") {
                     val jsonData = JSONObject(call.receive<String>())
-                    if (jsonData.length() > 0) {
-                        val collection = jsonData.keys().next().toString()
-                        val uuid = cassandraConnector.insertIntoTable(collection, jsonData[collection].toString())
+                    if (jsonData.length() > 0 && jsonData.has(COLLECTION) && jsonData.has(PAYLOAD)) {
+                        val uuid = cassandraConnector.insertIntoTable(
+                            jsonData[COLLECTION].toString(),
+                            jsonData[PAYLOAD].toString()
+                        )
                         call.respond(HttpStatusCode.OK, uuid)
                     } else {
-                        call.respond(HttpStatusCode.NoContent, "Request should contain json with collection field")
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            "Request should contain json with collection and payload fields"
+                        )
                     }
                 }
 
                 post("/update") {
                     val jsonData = JSONObject(call.receive<String>())
-                    if (jsonData.length() > 0) {
-                        var id: String? = null
-                        var collection: String? = null
-                        val keys = jsonData.keys()
-                        keys.forEach {
-                            if (it.toString() == ID) {
-                                id = jsonData[ID].toString()
+                    if (jsonData.length() > 0 && jsonData.has(ID) && jsonData.has(COLLECTION) && jsonData.has(PAYLOAD)) {
+                        val id: String = jsonData[ID].toString()
+                        val collection: String = jsonData[COLLECTION].toString()
+                        if (cassandraConnector.isCollectionExists(collection)) {
+                            val result: String? = cassandraConnector.getByIdFromCollection(collection, id)
+                            if (result != null) {
+                                cassandraConnector.updateRecordInTable(
+                                    collection,
+                                    id,
+                                    jsonData[PAYLOAD].toString()
+                                )
+                                call.respond(HttpStatusCode.OK)
                             } else {
-                                collection = it.toString()
-                            }
-                        }
-                        if (id != null && collection != null) {
-                            if (cassandraConnector.isCollectionExists(collection)) {
-                                val result: String? = cassandraConnector.getByIdFromCollection(collection, id)
-                                if (result != null) {
-                                    cassandraConnector.updateRecordInTable(
-                                        collection,
-                                        id,
-                                        jsonData[collection].toString()
-                                    )
-                                    call.respond(HttpStatusCode.OK)
-                                } else {
-                                    call.respond(HttpStatusCode.NotFound, "Id $id in collection $collection not found")
-                                }
-                            } else {
-                                call.respond(HttpStatusCode.NotFound, "Collection $collection not found")
+                                call.respond(HttpStatusCode.NotFound, "Id $id in collection $collection not found")
                             }
                         } else {
-                            call.respond(HttpStatusCode.BadRequest, "Request should contain collection and id fields")
+                            call.respond(HttpStatusCode.NotFound, "Collection $collection not found")
                         }
                     } else {
-                        call.respond(HttpStatusCode.NoContent)
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            "Request should contain json with collection, id and payload fields"
+                        )
                     }
                 }
             }
