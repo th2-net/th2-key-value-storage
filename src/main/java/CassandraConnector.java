@@ -195,15 +195,23 @@ public class CassandraConnector {
         }
     }
 
-    public boolean isIdExistsInCollection(String collection, String id){
+    public boolean isIdExistsInCollection(String collection, String id) {
         return getByIdFromCollection(collection, id) != null;
+    }
+
+    public void deleteFromCollection(String collection, String id) {
+        try {
+            session.execute("DELETE FROM " + keyspace + "." + collection + " WHERE id = " + id);
+        } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
+            System.out.println(e.getMessage());
+        }
     }
 
     public void dropTable(String table) {
         try {
             session.execute("DROP TABLE " + keyspace + "." + table);
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
-            System.out.println("timeout");
+            System.out.println(e.getMessage());
         }
 
     }

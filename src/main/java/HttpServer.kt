@@ -110,10 +110,6 @@ class HttpServer {
                     call.respond(HttpStatusCode.OK, "Hi! There is an empty response...")
                 }
 
-                get("/delete") {
-                    call.respond(HttpStatusCode.OK, "Delete")
-                }
-
                 get("/getWorkspaceLink") {
                     if (cassandraConnector.isCollectionExists(WORKSPACE_LINKS)) {
                         if (call.parameters.contains(ID)) {
@@ -174,6 +170,30 @@ class HttpServer {
                         )
                     }
                 }
+
+                post("/delete") {
+                    val jsonData = JSONObject(call.receive<String>())
+                    if (jsonData.length() > 0 && jsonData.has(ID) && jsonData.has(COLLECTION)) {
+                        val collection = jsonData[COLLECTION].toString()
+                        val id = jsonData[ID].toString()
+                        if (cassandraConnector.isCollectionExists(collection)) {
+                            if (cassandraConnector.isIdExistsInCollection(collection, id)) {
+                                cassandraConnector.deleteFromCollection(collection, id)
+                                call.respond(HttpStatusCode.OK)
+                            } else {
+                                call.respond(HttpStatusCode.NotFound, "Id $id in collection $collection not found")
+                            }
+                        } else {
+                            call.respond(HttpStatusCode.NotFound, "Collection $collection not found")
+                        }
+                    } else {
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            "Request should contain json with collection and id fields"
+                        )
+                    }
+                }
+
             }
         }.start(wait = true)
     }
