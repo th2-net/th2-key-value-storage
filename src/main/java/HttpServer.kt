@@ -89,8 +89,8 @@ class HttpServer {
                         if (cassandraConnector.isCollectionExists(collection)) {
                             val key = cassandraConnector.getCorrectId(collection, id);
                             if (key != null) {
-                                val result = cassandraConnector.getByIdFromCollection(collection, key)
-                                if (result != null) {
+                                if (cassandraConnector.isIdExistsInCollection(collection, key)) {
+                                    val result = cassandraConnector.getByIdFromCollection(collection, key)
                                     call.respond(HttpStatusCode.OK, result)
                                 } else {
                                     call.respond(HttpStatusCode.NotFound, "Id $id in collection $collection not found")
@@ -118,8 +118,8 @@ class HttpServer {
                     if (cassandraConnector.isCollectionExists(WORKSPACE_LINKS)) {
                         if (call.parameters.contains(ID)) {
                             val id = call.parameters[ID]
-                            val result = cassandraConnector.getByIdFromCollection(WORKSPACE_LINKS, id)
-                            if (result != null) {
+                            if (cassandraConnector.isIdExistsInCollection(WORKSPACE_LINKS, id)) {
+                                val result = cassandraConnector.getByIdFromCollection(WORKSPACE_LINKS, id)
                                 call.respond(HttpStatusCode.OK, result)
                             } else {
                                 call.respond(HttpStatusCode.NotFound, "Id $id in collection $WORKSPACE_LINKS not found")
@@ -151,11 +151,10 @@ class HttpServer {
                 post("/update") {
                     val jsonData = JSONObject(call.receive<String>())
                     if (jsonData.length() > 0 && jsonData.has(ID) && jsonData.has(COLLECTION) && jsonData.has(PAYLOAD)) {
-                        val id: String = jsonData[ID].toString()
-                        val collection: String = jsonData[COLLECTION].toString()
+                        val id = jsonData[ID].toString()
+                        val collection = jsonData[COLLECTION].toString()
                         if (cassandraConnector.isCollectionExists(collection)) {
-                            val result: String? = cassandraConnector.getByIdFromCollection(collection, id)
-                            if (result != null) {
+                            if (cassandraConnector.isIdExistsInCollection(collection, id)) {
                                 cassandraConnector.updateRecordInTable(
                                     collection,
                                     id,

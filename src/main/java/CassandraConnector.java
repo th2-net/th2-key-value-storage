@@ -195,6 +195,10 @@ public class CassandraConnector {
         }
     }
 
+    public boolean isIdExistsInCollection(String collection, String id){
+        return getByIdFromCollection(collection, id) != null;
+    }
+
     public void dropTable(String table) {
         try {
             session.execute("DROP TABLE " + keyspace + "." + table);
