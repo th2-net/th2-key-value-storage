@@ -14,6 +14,7 @@
  * limitations under the License.
  ******************************************************************************/
 
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.configuration.RabbitMQConfiguration
 import io.ktor.application.*
 import io.ktor.features.*
 import io.ktor.gson.*
@@ -27,7 +28,6 @@ import org.json.JSONObject
 import java.text.DateFormat
 
 class HttpServer {
-
     private val COLLECTION: String = "collection"
     private val ID: String = "id"
     private val PAYLOAD: String = "payload"
@@ -46,7 +46,13 @@ class HttpServer {
             }
 
             routing {
-                val cassandraConnector = CassandraConnector()
+                val cassandraConnector = CassandraConnector(
+                    "th2-qa",
+                    "datacenter1",
+                    "th2",
+                    "RkFosP24",
+                    "json_storage"
+                )
                 cassandraConnector.connect()
 
                 get("/idsFromCollection") {
@@ -56,7 +62,7 @@ class HttpServer {
                         if (cassandraConnector.isCollectionExists(collection)) {
                             val ids = cassandraConnector.getIdsFromCollection(collection)
                             ids.reverse()
-                            call.respondSse(sseEventsFromList(ids))
+                            call.respond(HttpStatusCode.OK, ids)
                         } else {
                             call.respond(HttpStatusCode.BadRequest, "Collection $collection not found")
                         }
@@ -72,7 +78,7 @@ class HttpServer {
                         if (cassandraConnector.isCollectionExists(collection)) {
                             val records = cassandraConnector.selectAllFromCollection(collection)
                             records.reverse()
-                            call.respondSse(sseEventsFromList(records))
+                            call.respond(HttpStatusCode.OK, records.toString())
                         } else {
                             call.respond(HttpStatusCode.NotFound, "Collection $collection not found")
                         }
@@ -131,11 +137,22 @@ class HttpServer {
                 post("/store") {
                     val jsonData = JSONObject(call.receive<String>())
                     if (jsonData.length() > 0 && jsonData.has(COLLECTION) && jsonData.has(PAYLOAD)) {
+                        val collection = jsonData[COLLECTION].toString().toLowerCase()
                         val uuid = cassandraConnector.insertIntoTable(
-                            jsonData[COLLECTION].toString(),
+                            collection,
                             jsonData[PAYLOAD].toString()
                         )
-                        call.respond(HttpStatusCode.OK, uuid)
+                        if (jsonData.has(ID)) {
+                            val id = jsonData[ID].toString()
+                            if (!cassandraConnector.isAlternateKeyExists(collection, id)) {
+                                cassandraConnector.setDefaultKey(collection, id, uuid)
+                                call.respond(HttpStatusCode.OK, uuid)
+                            } else {
+                                call.respond(HttpStatusCode.Conflict, "Object with id $id already exists")
+                            }
+                        } else {
+                            call.respond(HttpStatusCode.OK, uuid)
+                        }
                     } else {
                         call.respond(
                             HttpStatusCode.BadRequest,
@@ -147,11 +164,12 @@ class HttpServer {
                 post("/update") {
                     val jsonData = JSONObject(call.receive<String>())
                     if (jsonData.length() > 0 && jsonData.has(ID) && jsonData.has(COLLECTION) && jsonData.has(PAYLOAD)) {
-                        val id = jsonData[ID].toString()
-                        val collection = jsonData[COLLECTION].toString()
+                        var id = jsonData[ID].toString()
+                        val collection = jsonData[COLLECTION].toString().toLowerCase()
                         if (cassandraConnector.isCollectionExists(collection)) {
+                            id = cassandraConnector.getCorrectId(collection, id)
                             if (cassandraConnector.isIdExistsInCollection(collection, id)) {
-                                cassandraConnector.updateRecordInTable(
+                                cassandraConnector.updateRecordInCollection(
                                     collection,
                                     id,
                                     jsonData[PAYLOAD].toString()
@@ -171,26 +189,54 @@ class HttpServer {
                     }
                 }
 
-                post("/delete") {
-                    val jsonData = JSONObject(call.receive<String>())
-                    if (jsonData.length() > 0 && jsonData.has(ID) && jsonData.has(COLLECTION)) {
-                        val collection = jsonData[COLLECTION].toString()
-                        val id = jsonData[ID].toString()
+                delete("/delete") {
+                    if (call.parameters.contains(ID) && call.parameters.contains(COLLECTION)) {
+                        val collection = call.parameters[COLLECTION].toString().toLowerCase()
+                        val id = call.parameters[ID].toString()
                         if (cassandraConnector.isCollectionExists(collection)) {
-                            if (cassandraConnector.isIdExistsInCollection(collection, id)) {
-                                cassandraConnector.deleteFromCollection(collection, id)
-                                call.respond(HttpStatusCode.OK)
-                            } else {
-                                call.respond(HttpStatusCode.NotFound, "Id $id in collection $collection not found")
-                            }
+                            if (cassandraConnector.isValidUUID(id))
+                                if (cassandraConnector.isIdExistsInCollection(collection, id)) {
+                                    cassandraConnector.deleteFromCollection(collection, id)
+                                    call.respond(HttpStatusCode.OK)
+                                } else {
+                                    call.respond(HttpStatusCode.NotFound, "Id $id in collection $collection not found")
+                                }
                         } else {
                             call.respond(HttpStatusCode.NotFound, "Collection $collection not found")
                         }
                     } else {
                         call.respond(
                             HttpStatusCode.BadRequest,
-                            "Request should contain json with collection and id fields"
+                            "Request should contain collection and id fields"
                         )
+                    }
+                }
+
+                delete("/dropCollection") {
+                    if (call.parameters.contains(COLLECTION)) {
+                        val collection = call.parameters[COLLECTION]?.toLowerCase()
+                        if (cassandraConnector.isCollectionExists(collection)) {
+                            cassandraConnector.clearTable(collection)
+                            call.respond(HttpStatusCode.OK, "All records in collection $collection deleted")
+                        } else {
+                            call.respond(HttpStatusCode.NotFound, "Collection $collection not found")
+                        }
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, "Request should contain collection field")
+                    }
+                }
+
+                delete("/clearCollection") {
+                    if (call.parameters.contains(COLLECTION)) {
+                        val collection = call.parameters[COLLECTION]?.toLowerCase()
+                        if (cassandraConnector.isCollectionExists(collection)) {
+                            cassandraConnector.deleteRowsWithoutAlternateKeys(collection)
+                            call.respond(HttpStatusCode.OK, "All not default records in collection $collection deleted")
+                        } else {
+                            call.respond(HttpStatusCode.NotFound, "Collection $collection not found")
+                        }
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, "Request should contain collection field")
                     }
                 }
 

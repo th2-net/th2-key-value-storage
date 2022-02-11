@@ -18,12 +18,9 @@ import com.datastax.oss.driver.api.core.*;
 import com.datastax.oss.driver.api.core.cql.Row;
 import com.datastax.oss.driver.api.core.servererrors.QueryExecutionException;
 import com.datastax.oss.driver.api.core.servererrors.QueryValidationException;
-import org.jetbrains.annotations.NotNull;
 
-import java.io.FileNotFoundException;
 import java.net.InetSocketAddress;
 
-import com.datastax.oss.driver.api.core.cql.ResultSet;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -31,12 +28,25 @@ import java.util.regex.Pattern;
 
 public class CassandraConnector {
 
-    @NotNull
-    String databaseAddress = "th2-qa";
-    String datacenterName = "datacenter1";
-    String user = "th2";
-    String password = "RkFosP24";
-    String keyspace = "json_storage";
+    private final String databaseAddress;
+    private final String datacenterName;
+    private final String user;
+    private final String password;
+    private final String keyspace;
+
+    public CassandraConnector(String databaseAddress,
+                              String datacenterName,
+                              String user,
+                              String password,
+                              String keyspace) {
+        this.databaseAddress = databaseAddress;
+        this.datacenterName = datacenterName;
+        this.user = user;
+        this.password = password;
+        this.keyspace = keyspace;
+    }
+
+    String ALTERNATE_KEYS_STORAGE = "alternate_keys_storage";
 
     private final Pattern UUID_REGEX_PATTERN =
             Pattern.compile("^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$");
@@ -67,10 +77,10 @@ public class CassandraConnector {
         }
     }
 
-    public List<String> selectAllFromCollection(String table) {
+    public List<Object> selectAllFromCollection(String table) {
         try {
             List<Row> rows = session.execute("SELECT * FROM " + keyspace + "." + table).all();
-            List<String> records = new ArrayList<>();
+            List<Object> records = new ArrayList<>();
             for (Row row : rows) {
                 records.add(row.getFormattedContents());
             }
@@ -96,22 +106,25 @@ public class CassandraConnector {
         }
     }
 
-    public void setKeyName(String table, String keyName) {
+    public void setDefaultKey(String collection, String keyName, String uuidValue) {
         try {
-            String key = table + "_" + keyName;
-            UUID uuid = UUID.randomUUID();
-            ResultSet resultSet = session.execute("INSERT INTO " +
-                    keyspace + ".alternate_keys_storage (name, uuid_key) VALUES ('" + key + "', " + uuid + ")");
+            session.execute("INSERT INTO " +
+                    keyspace + "." + ALTERNATE_KEYS_STORAGE + " (name, collection, uuid_key) " +
+                    "VALUES ('" + keyName + "', '" + collection + "', " + uuidValue + ")");
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
             System.out.println(e.getMessage());
         }
     }
 
+    public boolean isAlternateKeyExists(String collection, String keyName) {
+        return getUUIDByKeyName(collection, keyName) != null;
+    }
+
     @Nullable
     public String getUUIDByKeyName(String collection, String keyName) {
         try {
-            String name = collection + "_" + keyName;
-            Row row = session.execute("SELECT * FROM " + keyspace + ".alternate_keys_storage WHERE name = '" + name + "'").one();
+            Row row = session.execute("SELECT * FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
+                    " WHERE name = '" + keyName + "' AND collection = '" + collection + "'").one();
             return row != null ? row.getObject("uuid_key").toString() : null;
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
             System.out.println(e.getMessage());
@@ -121,9 +134,9 @@ public class CassandraConnector {
 
     public void createKeysTableIfNotExists() {
         try {
-            session.execute("CREATE TABLE IF NOT EXISTS " + keyspace + ".alternate_keys_storage (name text, " +
+            session.execute("CREATE TABLE IF NOT EXISTS " + keyspace + ".alternate_keys_storage (name text, collection text, " +
                     "uuid_key uuid, " +
-                    "PRIMARY KEY (name))");
+                    "PRIMARY KEY (name, collection))");
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
             System.out.println(e.getMessage());
         }
@@ -186,7 +199,7 @@ public class CassandraConnector {
         }
     }
 
-    public void updateRecordInTable(String table, String id, String object) {
+    public void updateRecordInCollection(String table, String id, String object) {
         try {
             session.execute("UPDATE " + keyspace + "." + table +
                     " SET json = '" + object + "' WHERE id = " + id);
@@ -207,13 +220,54 @@ public class CassandraConnector {
         }
     }
 
+    public void clearTable(String collection) {
+        try {
+            session.execute("TRUNCATE " + keyspace + "." + collection);
+        } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    public void deleteRowsWithoutAlternateKeys(String collection) {
+        try {
+            List<String> alternateKeysIds = getAlternateKeysIds(collection);
+            if (alternateKeysIds == null || alternateKeysIds.isEmpty()) {
+                clearTable(collection);
+            } else {
+                List<Row> rows = session.execute("SELECT id FROM " + keyspace + "." + collection).all();
+                for (Row row : rows) {
+                    String id = row.getObject("id").toString();
+                    if (!alternateKeysIds.contains(id)) {
+                        session.execute("DELETE FROM " + keyspace + "." + collection + " WHERE id = " + id + "");
+                    }
+                }
+            }
+        } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    private List<String> getAlternateKeysIds(String collection) {
+        try {
+            List<String> ids = new ArrayList<>();
+            List<Row> rows = session.execute("SELECT uuid_key FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
+                    " WHERE collection = '" + collection + "' ALLOW FILTERING").all();
+            for (Row row : rows) {
+                ids.add(Objects.requireNonNull(row.getObject("uuid_key")).toString());
+            }
+            return ids;
+        } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
+            System.out.println(e.getMessage());
+            return null;
+        }
+    }
+
     public void dropTable(String table) {
         try {
             session.execute("DROP TABLE " + keyspace + "." + table);
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
             System.out.println(e.getMessage());
         }
-
     }
 
     public void dropKeySpace(String name) {
