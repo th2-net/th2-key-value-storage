@@ -14,7 +14,6 @@
  * limitations under the License.
  ******************************************************************************/
 
-import com.exactpro.th2.common.schema.message.impl.rabbitmq.configuration.RabbitMQConfiguration
 import io.ktor.application.*
 import io.ktor.features.*
 import io.ktor.gson.*
@@ -32,8 +31,12 @@ class HttpServer {
     private val ID: String = "id"
     private val PAYLOAD: String = "payload"
     private val WORKSPACE_LINKS: String = "workspace_links"
+    private val TIMESTAMP: String = "timestamp"
+    private val ALTERNATE_KEYS_STORAGE = "alternate_keys_storage"
+    private val SORT = "sort"
+    private val ASCENDING = "ascending"
 
-    fun run() {
+    fun run(args: Array<String>) {
         embeddedServer(Netty, port = 8080) {
             install(ContentNegotiation) {
                 gson {
@@ -46,13 +49,8 @@ class HttpServer {
             }
 
             routing {
-                val cassandraConnector = CassandraConnector(
-                    "th2-qa",
-                    "datacenter1",
-                    "th2",
-                    "RkFosP24",
-                    "json_storage"
-                )
+
+                val cassandraConnector = CassandraConnector(args)
                 cassandraConnector.connect()
 
                 get("/idsFromCollection") {
@@ -61,8 +59,12 @@ class HttpServer {
                         val collection = parameters[COLLECTION]?.toLowerCase()
                         if (cassandraConnector.isCollectionExists(collection)) {
                             val ids = cassandraConnector.getIdsFromCollection(collection)
-                            ids.reverse()
-                            call.respond(HttpStatusCode.OK, ids)
+                            if (parameters.contains(SORT) && parameters[SORT].equals(ASCENDING)) {
+                                call.respond(HttpStatusCode.OK, ids)
+                            } else {
+                                ids.reverse()
+                                call.respond(HttpStatusCode.OK, ids)
+                            }
                         } else {
                             call.respond(HttpStatusCode.BadRequest, "Collection $collection not found")
                         }
@@ -77,8 +79,12 @@ class HttpServer {
                         val collection = parameters[COLLECTION]?.toLowerCase()
                         if (cassandraConnector.isCollectionExists(collection)) {
                             val records = cassandraConnector.selectAllFromCollection(collection)
-                            records.reverse()
-                            call.respond(HttpStatusCode.OK, records.toString())
+                            if (parameters.contains(SORT) && parameters[SORT].equals(ASCENDING)) {
+                                call.respond(HttpStatusCode.OK, records.toString())
+                            } else {
+                                records.reverse()
+                                call.respond(HttpStatusCode.OK, records.toString())
+                            }
                         } else {
                             call.respond(HttpStatusCode.NotFound, "Collection $collection not found")
                         }
@@ -93,9 +99,30 @@ class HttpServer {
                         val collection = parameters[COLLECTION]?.toLowerCase()
                         val id = parameters[ID]
                         if (cassandraConnector.isCollectionExists(collection)) {
-                            val key = cassandraConnector.getCorrectId(collection, id);
+                            val key = cassandraConnector.getCorrectId(collection, id)
                             if (key != null) {
                                 if (cassandraConnector.isIdExistsInCollection(collection, key)) {
+                                    if (parameters.contains(TIMESTAMP)) {
+                                        val timestamp = parameters[TIMESTAMP].toString()
+                                        if (cassandraConnector.isTimestampExistsInCollection(
+                                                collection,
+                                                id,
+                                                timestamp
+                                            )
+                                        ) {
+                                            val result = cassandraConnector.getByIdAndTimestampFromCollection(
+                                                collection,
+                                                id,
+                                                timestamp
+                                            )
+                                            call.respond(HttpStatusCode.OK, result)
+                                        } else {
+                                            call.respond(
+                                                HttpStatusCode.NotFound,
+                                                "Timestamp $timestamp in collection $collection not found"
+                                            )
+                                        }
+                                    }
                                     val result = cassandraConnector.getByIdFromCollection(collection, key)
                                     call.respond(HttpStatusCode.OK, result)
                                 } else {
@@ -144,6 +171,7 @@ class HttpServer {
                         )
                         if (jsonData.has(ID)) {
                             val id = jsonData[ID].toString()
+                            cassandraConnector.createKeysTableIfNotExists()
                             if (!cassandraConnector.isAlternateKeyExists(collection, id)) {
                                 cassandraConnector.setDefaultKey(collection, id, uuid)
                                 call.respond(HttpStatusCode.OK, uuid)
@@ -239,7 +267,6 @@ class HttpServer {
                         call.respond(HttpStatusCode.NotFound, "Request should contain collection field")
                     }
                 }
-
             }
         }.start(wait = true)
     }

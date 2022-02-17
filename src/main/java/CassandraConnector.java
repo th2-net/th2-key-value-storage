@@ -18,9 +18,15 @@ import com.datastax.oss.driver.api.core.*;
 import com.datastax.oss.driver.api.core.cql.Row;
 import com.datastax.oss.driver.api.core.servererrors.QueryExecutionException;
 import com.datastax.oss.driver.api.core.servererrors.QueryValidationException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import org.apache.commons.cli.*;
 
+import java.io.File;
+import java.io.IOException;
+import java.math.BigInteger;
 import java.net.InetSocketAddress;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -28,25 +34,56 @@ import java.util.regex.Pattern;
 
 public class CassandraConnector {
 
-    private final String databaseAddress;
-    private final String datacenterName;
-    private final String user;
+    String ALTERNATE_KEYS_STORAGE = "alternate_keys_storage";
+    String FOLDER_PATH;
+    private static final String CRADLE_CONFIDENTIAL_FILE_NAME = "cradle.json";
+
+    private final String host;
+    private final String dataCenter;
+    private final String username;
     private final String password;
     private final String keyspace;
+    private final String port;
 
-    public CassandraConnector(String databaseAddress,
-                              String datacenterName,
-                              String user,
-                              String password,
-                              String keyspace) {
-        this.databaseAddress = databaseAddress;
-        this.datacenterName = datacenterName;
-        this.user = user;
-        this.password = password;
-        this.keyspace = keyspace;
+    private void readCommandLineArgs(String[] args){
+        Options options = new Options();
+        Option configs = new Option("c", "configs", true, "configs folder path");
+        configs.setRequired(true);
+        options.addOption(configs);
+
+        CommandLineParser parser = new DefaultParser();
+        CommandLine cmd = null;
+        try {
+            cmd = parser.parse(options, args);
+        } catch (ParseException e) {
+            System.out.println(e.getMessage());
+            System.exit(1);
+        }
+        FOLDER_PATH = cmd.getOptionValue("configs");
     }
 
-    String ALTERNATE_KEYS_STORAGE = "alternate_keys_storage";
+    public CassandraConnector(String[] args) {
+        readCommandLineArgs(args);
+        DBCredentials credentials = GetDBCredentials(FOLDER_PATH + "/" + CRADLE_CONFIDENTIAL_FILE_NAME);
+        assert credentials != null;
+        this.host = credentials.host;
+        this.dataCenter = credentials.dataCenter;
+        this.username = credentials.username;
+        this.password = credentials.password;
+        this.keyspace = credentials.keyspace;
+        this.port = credentials.port;
+    }
+
+    private DBCredentials GetDBCredentials(String jsonCredentialsPath) {
+        try{
+            ObjectMapper objectMapper = new ObjectMapper();
+            return objectMapper.readValue(new File(jsonCredentialsPath), DBCredentials.class);
+        } catch (IOException e){
+            System.out.println(e.getMessage());
+            return null;
+        }
+
+    }
 
     private final Pattern UUID_REGEX_PATTERN =
             Pattern.compile("^[{]?[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}[}]?$");
@@ -63,9 +100,9 @@ public class CassandraConnector {
     public void connect() {
         session = CqlSession.builder()
                 .addContactPoint(
-                        new InetSocketAddress(databaseAddress, 32110))
-                .withLocalDatacenter(datacenterName)
-                .withAuthCredentials(user, password)
+                        new InetSocketAddress(host, Integer.parseInt(port)))
+                .withLocalDatacenter(dataCenter)
+                .withAuthCredentials(username, password)
                 .build();
     }
 
@@ -77,15 +114,17 @@ public class CassandraConnector {
         }
     }
 
-    public List<Object> selectAllFromCollection(String table) {
+    public List<String> selectAllFromCollection(String table) {
         try {
             List<Row> rows = session.execute("SELECT * FROM " + keyspace + "." + table).all();
-            List<Object> records = new ArrayList<>();
-            for (Row row : rows) {
-                records.add(row.getFormattedContents());
+            List<String> result = new ArrayList<>();
+            List<Record> records = sortByTimestamp(rows);
+            for (Record record : records) {
+                ObjectMapper mapper = new ObjectMapper();
+                result.add(mapper.writeValueAsString(record));
             }
-            return records;
-        } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
+            return result;
+        } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException | JsonProcessingException e) {
             System.out.println(e.getMessage());
             return null;
         }
@@ -99,7 +138,7 @@ public class CassandraConnector {
         try {
             session.execute("CREATE TABLE IF NOT EXISTS " + keyspace + "." + table +
                     " (id uuid, " +
-                    "json text, " +
+                    "json text, time bigint, " +
                     "PRIMARY KEY (id))");
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
             System.out.println(e.getMessage());
@@ -142,9 +181,31 @@ public class CassandraConnector {
         }
     }
 
-    public String getByIdFromCollection(String table, String id) {
+    public String getByIdAndTimestampFromCollection(String collection, String id, String timestamp){
         try {
-            Row row = session.execute("SELECT * FROM " + keyspace + "." + table + " WHERE id = " + id).one();
+            Row row = session.execute("SELECT * FROM " + keyspace + "." + collection +
+                    " WHERE id = " + id + " AND time = " + timestamp + " ALLOW FILTERING").one();
+            return row != null ? row.getObject("json").toString() : null;
+        } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
+            System.out.println(e.getMessage());
+            return null;
+        }
+    }
+
+    public List<Record> sortByTimestamp(List<Row> records){
+        List<Record> comparableRecords = new ArrayList<>();
+        for (Row row : records) {
+            Record record = new Record(row.getObject("id").toString(),
+                    row.getObject("json").toString(), new BigInteger(row.getObject("time").toString()));
+            comparableRecords.add(record);
+        }
+        comparableRecords.sort(Record.Comparators.TIME);
+        return comparableRecords;
+    }
+
+    public String getByIdFromCollection(String collection, String id) {
+        try {
+            Row row = session.execute("SELECT * FROM " + keyspace + "." + collection + " WHERE id = " + id).one();
             return row != null ? row.getObject("json").toString() : null;
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
             System.out.println(e.getMessage());
@@ -156,8 +217,9 @@ public class CassandraConnector {
         try {
             List<String> idsList = new ArrayList<>();
             List<Row> rows = session.execute("SELECT * FROM " + keyspace + "." + table).all();
-            for (Row row : rows) {
-                idsList.add(row.getObject("id").toString());
+            List<Record> records = sortByTimestamp(rows);
+            for (Record record : records) {
+                idsList.add(record.id);
             }
             return idsList;
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
@@ -167,7 +229,7 @@ public class CassandraConnector {
     }
 
     @Nullable
-    private List<String> getAllTables() {
+    public List<String> getAllTables() {
         try {
             List<String> tables = new ArrayList<>();
             List<Row> rows = session.execute("SELECT * FROM system_schema.tables WHERE keyspace_name = '" + keyspace + "'").all();
@@ -191,7 +253,7 @@ public class CassandraConnector {
         try {
             createTableIfNotExists(table);
             session.execute("INSERT INTO " + keyspace + "." + table +
-                    " (id,json) VALUES (" + uuid + ", '" + object + "')");
+                    " (id,json,time) VALUES (" + uuid + ", '" + object + "', toTimestamp(now()))");
             return uuid.toString();
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
             System.out.println(e.getMessage());
@@ -199,17 +261,22 @@ public class CassandraConnector {
         }
     }
 
-    public void updateRecordInCollection(String table, String id, String object) {
+    public void updateRecordInCollection(String collection, String id, String object) {
         try {
-            session.execute("UPDATE " + keyspace + "." + table +
-                    " SET json = '" + object + "' WHERE id = " + id);
+            session.execute("UPDATE " + keyspace + "." + collection +
+                    " SET json = '" + object + "', time = toTimestamp(now()) WHERE id = " + id);
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
             System.out.println(e.getMessage());
         }
     }
 
-    public boolean isIdExistsInCollection(String collection, String id) {
+    public boolean isIdExistsInCollection(String collection, String id)
+    {
         return getByIdFromCollection(collection, id) != null;
+    }
+
+    public boolean isTimestampExistsInCollection(String collection, String id, String timestamp) {
+        return getByIdAndTimestampFromCollection(collection, id, timestamp) != null;
     }
 
     public void deleteFromCollection(String collection, String id) {
@@ -262,9 +329,9 @@ public class CassandraConnector {
         }
     }
 
-    public void dropTable(String table) {
+    public void dropTable(String collection) {
         try {
-            session.execute("DROP TABLE " + keyspace + "." + table);
+            session.execute("DROP TABLE " + keyspace + "." + collection);
         } catch (DriverTimeoutException | QueryExecutionException | QueryValidationException e) {
             System.out.println(e.getMessage());
         }

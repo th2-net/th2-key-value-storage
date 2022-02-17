@@ -14,7 +14,6 @@
  * limitations under the License.
  ******************************************************************************/
 
-import com.exactpro.th2.common.schema.factory.CommonFactory
 import io.ktor.server.engine.*
 import io.ktor.util.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,15 +22,14 @@ import kotlinx.coroutines.InternalCoroutinesApi
 import kotlin.system.exitProcess
 
 class Main {
-    private val configurationFactory: CommonFactory
-
+    private var args: Array<String>
     @InternalAPI
     constructor(args: Array<String>) {
-        configurationFactory = CommonFactory.createFromArguments(*args)
+        this.args = args
     }
 
     fun run() {
-        HttpServer().run()
+       HttpServer().run(args)
     }
 }
 
