@@ -15,6 +15,7 @@ It will connect to the cassandra database via the datastax driver and provide th
 Accepts following query parameters:
 - `collection` - text, name of collection from which object requested
 - `id` - text, id of requested object
+- `timestamp` - number, unix-format time when object was written (optional)
 
 `http://localhost:8080/getWorkspaceLink` - returns a workspace link by id
 
@@ -25,11 +26,13 @@ Accepts following query parameters:
 
 Accepts following query parameters:
 - `collection` - text, name of collection from which ids requested
+- `sort` - text, get only "ascending" value. Means that ids will be sorted by timestamp in ascending order (default - descending) (optional)
 
 `http://localhost:8080/allRecordsFromCollection` - returns a list of records from collection
 
 Accepts following query parameters:
 - `collection` - text, name of collection from which records requested
+- `sort` - text, get only "ascending" value. Means that records will be sorted by timestamp in ascending order (default - descending) (optional)
 
 ### POST REQUESTS
 

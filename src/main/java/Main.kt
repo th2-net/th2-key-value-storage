@@ -21,12 +21,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.InternalCoroutinesApi
 import kotlin.system.exitProcess
 
-class Main {
-    private var args: Array<String>
-    @InternalAPI
-    constructor(args: Array<String>) {
-        this.args = args
-    }
+class Main @InternalAPI constructor(private var args: Array<String>) {
 
     fun run() {
        HttpServer().run(args)

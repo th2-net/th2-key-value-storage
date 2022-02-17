@@ -32,7 +32,6 @@ class HttpServer {
     private val PAYLOAD: String = "payload"
     private val WORKSPACE_LINKS: String = "workspace_links"
     private val TIMESTAMP: String = "timestamp"
-    private val ALTERNATE_KEYS_STORAGE = "alternate_keys_storage"
     private val SORT = "sort"
     private val ASCENDING = "ascending"
 
