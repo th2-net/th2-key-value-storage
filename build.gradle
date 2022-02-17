@@ -86,7 +86,7 @@ compileKotlin {
 }
 
 application {
-    mainClassName = "com.exactpro.th2.rptdataprovider.MainKt"
+    mainClassName = "com.exactpro.th2.keyvaluestorage.MainKt"
 }
 
 configurations.all {
