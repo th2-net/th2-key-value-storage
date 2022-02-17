@@ -14,12 +14,13 @@
  * limitations under the License.
  ******************************************************************************/
 
+package com.exactpro.th2.keyvaluestorage;
+
 import com.datastax.oss.driver.api.core.*;
 import com.datastax.oss.driver.api.core.cql.Row;
 import com.datastax.oss.driver.api.core.servererrors.QueryExecutionException;
 import com.datastax.oss.driver.api.core.servererrors.QueryValidationException;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import org.apache.commons.cli.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -27,6 +28,7 @@ import java.math.BigInteger;
 import java.net.InetSocketAddress;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.commons.cli.*;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
@@ -45,7 +47,7 @@ public class CassandraConnector {
     private final String keyspace;
     private final String port;
 
-    private void readCommandLineArgs(String[] args){
+    private void readCommandLineArgs(String[] args) {
         Options options = new Options();
         Option configs = new Option("c", "configs", true, "configs folder path");
         configs.setRequired(true);
@@ -75,10 +77,10 @@ public class CassandraConnector {
     }
 
     private DBCredentials GetDBCredentials(String jsonCredentialsPath) {
-        try{
+        try {
             ObjectMapper objectMapper = new ObjectMapper();
             return objectMapper.readValue(new File(jsonCredentialsPath), DBCredentials.class);
-        } catch (IOException e){
+        } catch (IOException e) {
             System.out.println(e.getMessage());
             return null;
         }
@@ -181,7 +183,7 @@ public class CassandraConnector {
         }
     }
 
-    public String getByIdAndTimestampFromCollection(String collection, String id, String timestamp){
+    public String getByIdAndTimestampFromCollection(String collection, String id, String timestamp) {
         try {
             Row row = session.execute("SELECT * FROM " + keyspace + "." + collection +
                     " WHERE id = " + id + " AND time = " + timestamp + " ALLOW FILTERING").one();
@@ -192,7 +194,7 @@ public class CassandraConnector {
         }
     }
 
-    public List<Record> sortByTimestamp(List<Row> records){
+    public List<Record> sortByTimestamp(List<Row> records) {
         List<Record> comparableRecords = new ArrayList<>();
         for (Row row : records) {
             Record record = new Record(row.getObject("id").toString(),
@@ -270,8 +272,7 @@ public class CassandraConnector {
         }
     }
 
-    public boolean isIdExistsInCollection(String collection, String id)
-    {
+    public boolean isIdExistsInCollection(String collection, String id) {
         return getByIdFromCollection(collection, id) != null;
     }
 

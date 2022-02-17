@@ -14,7 +14,7 @@
  * limitations under the License.
  ******************************************************************************/
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+package com.exactpro.th2.keyvaluestorage; import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jetbrains.annotations.NotNull;
 
 import java.math.BigInteger;

@@ -14,6 +14,8 @@
  * limitations under the License.
  ******************************************************************************/
 
+package com.exactpro.th2.keyvaluestorage;
+
 public class DBCredentials {
     public String dataCenter;
     public String host;
