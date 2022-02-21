@@ -31,7 +31,7 @@ import java.util.*
 import java.util.regex.Pattern
 
 class CassandraConnector(args: Array<String>) {
-    var FOLDER_PATH: String? = null
+    private var FOLDER_PATH: String? = null
     private val host: String?
     private val dataCenter: String?
     private val username: String?

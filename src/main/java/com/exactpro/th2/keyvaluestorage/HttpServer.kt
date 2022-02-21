@@ -39,9 +39,6 @@ class HttpServer {
                     setPrettyPrinting()
                 }
             }
-            install(CORS) {
-                anyHost()
-            }
 
             routing {
 

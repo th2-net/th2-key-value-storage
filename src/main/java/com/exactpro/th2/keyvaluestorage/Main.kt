@@ -42,7 +42,7 @@ import kotlin.system.exitProcess
 class Main @InternalAPI constructor(private var args: Array<String>) {
 
     fun run() {
-       HttpServer().run(args)
+        HttpServer().run(args)
     }
 }
 

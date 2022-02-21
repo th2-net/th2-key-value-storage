@@ -18,14 +18,19 @@ package com.exactpro.th2.keyvaluestorage
 class DBCredentials {
     @JvmField
     var dataCenter: String? = null
+
     @JvmField
     var host: String? = null
+
     @JvmField
     var port: String? = null
+
     @JvmField
     var keyspace: String? = null
+
     @JvmField
     var username: String? = null
+
     @JvmField
     var password: String? = null
 }
