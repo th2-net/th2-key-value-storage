@@ -14,13 +14,27 @@
  * limitations under the License.
  ******************************************************************************/
 
-package com.exactpro.th2.keyvaluestorage;
+package com.exactpro.th2.keyvaluestorage
 
-public class DBCredentials {
-    public String dataCenter;
-    public String host;
-    public String port;
-    public String keyspace;
-    public String username;
-    public String password;
+import com.fasterxml.jackson.annotation.JsonProperty
+import java.math.BigInteger
+
+open class Record(id: String, json: String, time: BigInteger) : Comparable<Record> {
+    @JsonProperty("id")
+    var id: String = id
+
+    @JsonProperty("json")
+    var json: String = json.replace("\"", "")
+
+    @JsonProperty("time")
+    var time: BigInteger = time
+
+    override operator fun compareTo(other: Record): Int {
+        return Comparators.TIME.compare(this, other)
+    }
+
+    object Comparators {
+        var TIME =
+            java.util.Comparator<Record> { o1, o2 -> o1.time.compareTo(o2.time) }
+    }
 }

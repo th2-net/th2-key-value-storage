@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.keyvaluestorage
 
+
 import io.ktor.application.*
 import io.ktor.features.*
 import io.ktor.gson.*
@@ -56,8 +57,7 @@ class HttpServer {
                             if (parameters.contains(SORT) && parameters[SORT].equals(ASCENDING)) {
                                 call.respond(HttpStatusCode.OK, ids)
                             } else {
-                                ids.reverse()
-                                call.respond(HttpStatusCode.OK, ids)
+                                call.respond(HttpStatusCode.OK, ids.reversed())
                             }
                         } else {
                             call.respond(HttpStatusCode.BadRequest, "Collection $collection not found")
@@ -76,8 +76,7 @@ class HttpServer {
                             if (parameters.contains(SORT) && parameters[SORT].equals(ASCENDING)) {
                                 call.respond(HttpStatusCode.OK, records.toString())
                             } else {
-                                records.reverse()
-                                call.respond(HttpStatusCode.OK, records.toString())
+                                call.respond(HttpStatusCode.OK, records.reversed().toString())
                             }
                         } else {
                             call.respond(HttpStatusCode.NotFound, "Collection $collection not found")
@@ -109,7 +108,7 @@ class HttpServer {
                                                 id,
                                                 timestamp
                                             )
-                                            call.respond(HttpStatusCode.OK, result)
+                                            call.respond(HttpStatusCode.OK, result.toString())
                                         } else {
                                             call.respond(
                                                 HttpStatusCode.NotFound,
@@ -118,7 +117,7 @@ class HttpServer {
                                         }
                                     }
                                     val result = cassandraConnector.getByIdFromCollection(collection, key)
-                                    call.respond(HttpStatusCode.OK, result)
+                                    call.respond(HttpStatusCode.OK, result.toString())
                                 } else {
                                     call.respond(HttpStatusCode.NotFound, "Id $id in collection $collection not found")
                                 }
@@ -143,7 +142,7 @@ class HttpServer {
                             val id = call.parameters[ID]
                             if (cassandraConnector.isIdExistsInCollection(WORKSPACE_LINKS, id)) {
                                 val result = cassandraConnector.getByIdFromCollection(WORKSPACE_LINKS, id)
-                                call.respond(HttpStatusCode.OK, result)
+                                call.respond(HttpStatusCode.OK, result.toString())
                             } else {
                                 call.respond(HttpStatusCode.NotFound, "Id $id in collection $WORKSPACE_LINKS not found")
                             }
@@ -167,13 +166,13 @@ class HttpServer {
                             val id = jsonData[ID].toString()
                             cassandraConnector.createKeysTableIfNotExists()
                             if (!cassandraConnector.isAlternateKeyExists(collection, id)) {
-                                cassandraConnector.setDefaultKey(collection, id, uuid)
-                                call.respond(HttpStatusCode.OK, uuid)
+                                cassandraConnector.setDefaultKey(collection, id, uuid.toString())
+                                call.respond(HttpStatusCode.OK, uuid.toString())
                             } else {
                                 call.respond(HttpStatusCode.Conflict, "Object with id $id already exists")
                             }
                         } else {
-                            call.respond(HttpStatusCode.OK, uuid)
+                            call.respond(HttpStatusCode.OK, uuid.toString())
                         }
                     } else {
                         call.respond(
