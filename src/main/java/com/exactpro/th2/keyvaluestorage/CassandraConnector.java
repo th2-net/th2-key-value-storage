@@ -35,8 +35,7 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 public class CassandraConnector {
-
-    String ALTERNATE_KEYS_STORAGE = "alternate_keys_storage";
+    private static final String ALTERNATE_KEYS_STORAGE = "alternate_keys_storage";
     String FOLDER_PATH;
     private static final String CRADLE_CONFIDENTIAL_FILE_NAME = "cradle.json";
 

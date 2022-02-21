@@ -16,7 +16,6 @@
 
 package com.exactpro.th2.keyvaluestorage
 
-
 import io.ktor.application.*
 import io.ktor.features.*
 import io.ktor.gson.*
@@ -30,13 +29,6 @@ import org.json.JSONObject
 import java.text.DateFormat
 
 class HttpServer {
-    private val COLLECTION: String = "collection"
-    private val ID: String = "id"
-    private val PAYLOAD: String = "payload"
-    private val WORKSPACE_LINKS: String = "workspace_links"
-    private val TIMESTAMP: String = "timestamp"
-    private val SORT = "sort"
-    private val ASCENDING = "ascending"
 
     fun run(args: Array<String>) {
         embeddedServer(Netty, port = 8080) {
