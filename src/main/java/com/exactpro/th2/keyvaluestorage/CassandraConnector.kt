@@ -38,6 +38,7 @@ class CassandraConnector(args: Array<String>) {
     private val password: String?
     private val keyspace: String?
     private val port: String?
+
     private fun readCommandLineArgs(args: Array<String>) {
         val options = Options()
         val configs = Option("c", "configs", true, "configs folder path")
@@ -80,11 +81,13 @@ class CassandraConnector(args: Array<String>) {
             .withLocalDatacenter(dataCenter!!)
             .withAuthCredentials(username!!, password!!)
             .build()
+
+        createKeySpaceIfNotExists(keyspace!!)
     }
 
-    fun createKeySpace(name: String) {
+    private fun createKeySpaceIfNotExists(name: String) {
         try {
-            session!!.execute("CREATE KEYSPACE $name WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 3}")
+            session!!.execute("CREATE KEYSPACE IF NOT EXISTS $name WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 3}")
         } catch (e: DriverTimeoutException) {
             println(e.message)
         } catch (e: QueryExecutionException) {
@@ -123,7 +126,7 @@ class CassandraConnector(args: Array<String>) {
         return if (isValidUUID(id)) id.toString() else getUUIDByKeyName(collection, id)!!
     }
 
-    fun createTableIfNotExists(table: String) {
+    private fun createTableIfNotExists(table: String) {
         try {
             session!!.execute(
                 "CREATE TABLE IF NOT EXISTS " + keyspace + "." + table +
@@ -160,7 +163,7 @@ class CassandraConnector(args: Array<String>) {
         return getUUIDByKeyName(collection, keyName) != null
     }
 
-    fun getUUIDByKeyName(collection: String?, keyName: String?): String {
+    private fun getUUIDByKeyName(collection: String?, keyName: String?): String {
         return try {
             val row = session!!.execute(
                 "SELECT * FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
@@ -214,7 +217,7 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun sortByTimestamp(records: List<Row>): List<Record> {
+    private fun sortByTimestamp(records: List<Row>): List<Record> {
         val comparableRecords: MutableList<Record> = ArrayList()
         for (row in records) {
             val record = Record(
@@ -264,7 +267,7 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    val allTables: List<String>?
+    private val allTables: List<String>?
         get() = try {
             val tables: MutableList<String> = ArrayList()
             val rows = session!!.execute("SELECT * FROM system_schema.tables WHERE keyspace_name = '$keyspace'").all()
@@ -428,11 +431,6 @@ class CassandraConnector(args: Array<String>) {
 
     fun close() {
         session!!.close()
-    }
-
-    companion object {
-        private const val ALTERNATE_KEYS_STORAGE = "alternate_keys_storage"
-        private const val CRADLE_CONFIDENTIAL_FILE_NAME = "cradle.json"
     }
 
     init {
