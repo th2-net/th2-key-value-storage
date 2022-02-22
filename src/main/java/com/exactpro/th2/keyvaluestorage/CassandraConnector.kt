@@ -15,20 +15,21 @@
  */
 package com.exactpro.th2.keyvaluestorage
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import java.io.IOException
 import com.datastax.oss.driver.api.core.CqlSession
-import java.net.InetSocketAddress
 import com.datastax.oss.driver.api.core.DriverTimeoutException
 import com.datastax.oss.driver.api.core.cql.Row
 import com.datastax.oss.driver.api.core.servererrors.QueryExecutionException
 import com.datastax.oss.driver.api.core.servererrors.QueryValidationException
 import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.commons.cli.*
 import java.io.File
+import java.io.IOException
 import java.math.BigInteger
+import java.net.InetSocketAddress
 import java.util.*
 import java.util.regex.Pattern
+
 
 class CassandraConnector(args: Array<String>) {
     private var FOLDER_PATH: String? = null
@@ -53,6 +54,17 @@ class CassandraConnector(args: Array<String>) {
             System.exit(1)
         }
         FOLDER_PATH = cmd!!.getOptionValue("configs")
+    }
+
+    private fun GetKeyspaceName(keyspaceNameStoragePath: String): String? {
+        return try {
+            val objectMapper = ObjectMapper()
+            val jsonMap = objectMapper.readValue(File(keyspaceNameStoragePath), HashMap::class.java)
+            return jsonMap["keyspace"].toString()
+        } catch (e: IOException) {
+            println(e.message)
+            null
+        }
     }
 
     private fun GetDBCredentials(jsonCredentialsPath: String): DBCredentials? {
@@ -122,8 +134,8 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun getCorrectId(collection: String?, id: String?): String {
-        return if (isValidUUID(id)) id.toString() else getUUIDByKeyName(collection, id)!!
+    fun getCorrectId(collection: String?, id: String?): String? {
+        return if (isValidUUID(id)) id.toString() else getUUIDByKeyName(collection, id)
     }
 
     private fun createTableIfNotExists(table: String) {
@@ -163,7 +175,7 @@ class CassandraConnector(args: Array<String>) {
         return getUUIDByKeyName(collection, keyName) != null
     }
 
-    private fun getUUIDByKeyName(collection: String?, keyName: String?): String {
+    private fun getUUIDByKeyName(collection: String?, keyName: String?): String? {
         return try {
             val row = session!!.execute(
                 "SELECT * FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
@@ -172,13 +184,13 @@ class CassandraConnector(args: Array<String>) {
             row?.getObject("uuid_key")?.toString().toString()
         } catch (e: DriverTimeoutException) {
             println(e.message)
-            null.toString()
+            null
         } catch (e: QueryExecutionException) {
             println(e.message)
-            null.toString()
+            null
         } catch (e: QueryValidationException) {
             println(e.message)
-            null.toString()
+            null
         }
     }
 
@@ -252,7 +264,7 @@ class CassandraConnector(args: Array<String>) {
             val rows = session!!.execute("SELECT * FROM $keyspace.$table").all()
             val records = sortByTimestamp(rows)
             for (record in records) {
-                record.id?.let { idsList.add(it) }
+                record.id.let { idsList.add(it) }
             }
             idsList
         } catch (e: DriverTimeoutException) {
@@ -362,7 +374,7 @@ class CassandraConnector(args: Array<String>) {
     fun deleteRowsWithoutAlternateKeys(collection: String?) {
         try {
             val alternateKeysIds = getAlternateKeysIds(collection)
-            if (alternateKeysIds == null || alternateKeysIds.isEmpty()) {
+            if (alternateKeysIds.isEmpty()) {
                 clearTable(collection)
             } else {
                 val rows = session!!.execute("SELECT id FROM $keyspace.$collection").all()
@@ -435,12 +447,12 @@ class CassandraConnector(args: Array<String>) {
 
     init {
         readCommandLineArgs(args)
-        val credentials = GetDBCredentials(FOLDER_PATH + "/" + CRADLE_CONFIDENTIAL_FILE_NAME)!!
+        val credentials = GetDBCredentials("$FOLDER_PATH/$CRADLE_CONFIDENTIAL_FILE_NAME")!!
         host = credentials.host
         dataCenter = credentials.dataCenter
         username = credentials.username
         password = credentials.password
-        keyspace = credentials.keyspace
+        keyspace = GetKeyspaceName("$FOLDER_PATH/$CUSTOM_JSON_FILE")
         port = credentials.port
     }
 }

@@ -26,9 +26,6 @@ class DBCredentials {
     var port: String? = null
 
     @JvmField
-    var keyspace: String? = null
-
-    @JvmField
     var username: String? = null
 
     @JvmField

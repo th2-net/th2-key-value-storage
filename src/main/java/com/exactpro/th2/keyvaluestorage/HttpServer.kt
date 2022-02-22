@@ -182,14 +182,14 @@ class HttpServer {
                 post("/update") {
                     val jsonData = JSONObject(call.receive<String>())
                     if (jsonData.length() > 0 && jsonData.has(ID) && jsonData.has(COLLECTION) && jsonData.has(PAYLOAD)) {
-                        var id = jsonData[ID].toString()
+                        var id: String? = jsonData[ID].toString()
                         val collection = jsonData[COLLECTION].toString().toLowerCase()
                         if (cassandraConnector.isCollectionExists(collection)) {
                             id = cassandraConnector.getCorrectId(collection, id)
-                            if (cassandraConnector.isIdExistsInCollection(collection, id)) {
+                            if (cassandraConnector.isIdExistsInCollection(collection, cassandraConnector.getCorrectId(collection, id))) {
                                 cassandraConnector.updateRecordInCollection(
                                     collection,
-                                    id,
+                                    id.toString(),
                                     jsonData[PAYLOAD].toString()
                                 )
                                 call.respond(HttpStatusCode.OK)
