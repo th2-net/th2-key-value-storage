@@ -17,11 +17,15 @@ package com.exactpro.th2.keyvaluestorage
 
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.DriverTimeoutException
+import com.datastax.oss.driver.api.core.connection.ConnectionInitException
 import com.datastax.oss.driver.api.core.cql.Row
 import com.datastax.oss.driver.api.core.servererrors.QueryExecutionException
 import com.datastax.oss.driver.api.core.servererrors.QueryValidationException
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.apache.commons.cli.*
 import java.io.File
 import java.io.IOException
@@ -29,6 +33,7 @@ import java.math.BigInteger
 import java.net.InetSocketAddress
 import java.util.*
 import java.util.regex.Pattern
+import kotlin.system.exitProcess
 
 
 class CassandraConnector(args: Array<String>) {
@@ -39,6 +44,24 @@ class CassandraConnector(args: Array<String>) {
     private val password: String?
     private val keyspace: String?
     private val port: String?
+
+    private suspend fun <T> databaseRequestRetry(request: () -> T): T? {
+        var goodRequest = false
+        var result: T? = null
+        while (!goodRequest) {
+            try {
+                result = request.invoke()
+                goodRequest = true
+            } catch (e: DriverTimeoutException) {
+                println("try to reconnect")
+            } catch (e: ConnectionInitException) {
+                println("try to reconnect")
+            } finally {
+                delay(DB_RETRY_DELAY)
+            }
+        }
+        return result
+    }
 
     private fun readCommandLineArgs(args: Array<String>) {
         val options = Options()
@@ -51,12 +74,12 @@ class CassandraConnector(args: Array<String>) {
             cmd = parser.parse(options, args)
         } catch (e: ParseException) {
             println(e.message)
-            System.exit(1)
+            exitProcess(1)
         }
         FOLDER_PATH = cmd!!.getOptionValue("configs")
     }
 
-    private fun GetKeyspaceName(keyspaceNameStoragePath: String): String? {
+    private fun getKeyspaceName(keyspaceNameStoragePath: String): String? {
         return try {
             val objectMapper = ObjectMapper()
             val jsonMap = objectMapper.readValue(File(keyspaceNameStoragePath), HashMap::class.java)
@@ -67,7 +90,7 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    private fun GetDBCredentials(jsonCredentialsPath: String): DBCredentials? {
+    private fun getDBCredentials(jsonCredentialsPath: String): DBCredentials? {
         return try {
             val objectMapper = ObjectMapper()
             objectMapper.readValue(File(jsonCredentialsPath), DBCredentials::class.java)
@@ -85,7 +108,7 @@ class CassandraConnector(args: Array<String>) {
     }
 
     var session: CqlSession? = null
-    fun connect() {
+    fun connect(callback: suspend () -> Unit) {
         session = CqlSession.builder()
             .addContactPoint(
                 InetSocketAddress(host, port!!.toInt())
@@ -93,13 +116,18 @@ class CassandraConnector(args: Array<String>) {
             .withLocalDatacenter(dataCenter!!)
             .withAuthCredentials(username!!, password!!)
             .build()
-
-        createKeySpaceIfNotExists(keyspace!!)
+        runBlocking {
+            launch {
+                callback.invoke()
+            }
+        }
     }
 
-    private fun createKeySpaceIfNotExists(name: String) {
+    suspend fun createKeySpaceIfNotExists() {
         try {
-            session!!.execute("CREATE KEYSPACE IF NOT EXISTS $name WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 3}")
+            databaseRequestRetry {
+                session!!.execute("CREATE KEYSPACE IF NOT EXISTS $keyspace WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 3}")
+            }
         } catch (e: DriverTimeoutException) {
             println(e.message)
         } catch (e: QueryExecutionException) {
@@ -109,11 +137,12 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun selectAllFromCollection(table: String?): List<String> {
+    suspend fun selectAllFromCollection(table: String?): List<String> {
         return try {
-            val rows = session!!.execute("SELECT * FROM $keyspace.$table").all()
+            val rows =
+                databaseRequestRetry<List<Row>> { session!!.execute("SELECT * FROM $keyspace.$table").all() }
             val result: MutableList<String> = ArrayList()
-            val records = sortByTimestamp(rows)
+            val records = sortByTimestamp(rows!!)
             for (record in records) {
                 val mapper = ObjectMapper()
                 result.add(mapper.writeValueAsString(record))
@@ -134,18 +163,20 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun getCorrectId(collection: String?, id: String?): String? {
+    suspend fun getCorrectId(collection: String?, id: String?): String? {
         return if (isValidUUID(id)) id.toString() else getUUIDByKeyName(collection, id)
     }
 
-    private fun createTableIfNotExists(table: String) {
+    private suspend fun createTableIfNotExists(table: String) {
         try {
-            session!!.execute(
-                "CREATE TABLE IF NOT EXISTS " + keyspace + "." + table +
-                        " (id uuid, " +
-                        "json text, time bigint, " +
-                        "PRIMARY KEY (id))"
-            )
+            databaseRequestRetry {
+                session!!.execute(
+                    "CREATE TABLE IF NOT EXISTS " + keyspace + "." + table +
+                            " (id uuid, " +
+                            "json text, time bigint, " +
+                            "PRIMARY KEY (id))"
+                )
+            }
         } catch (e: DriverTimeoutException) {
             println(e.message)
         } catch (e: QueryExecutionException) {
@@ -155,13 +186,15 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun setDefaultKey(collection: String, keyName: String, uuidValue: String) {
+    suspend fun setDefaultKey(collection: String, keyName: String, uuidValue: String) {
         try {
-            session!!.execute(
-                "INSERT INTO " +
-                        keyspace + "." + ALTERNATE_KEYS_STORAGE + " (name, collection, uuid_key) " +
-                        "VALUES ('" + keyName + "', '" + collection + "', " + uuidValue + ")"
-            )
+            databaseRequestRetry {
+                session!!.execute(
+                    "INSERT INTO " +
+                            keyspace + "." + ALTERNATE_KEYS_STORAGE + " (name, collection, uuid_key) " +
+                            "VALUES ('" + keyName + "', '" + collection + "', " + uuidValue + ")"
+                )
+            }
         } catch (e: DriverTimeoutException) {
             println(e.message)
         } catch (e: QueryExecutionException) {
@@ -171,16 +204,18 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun isAlternateKeyExists(collection: String, keyName: String): Boolean {
+    suspend fun isAlternateKeyExists(collection: String, keyName: String): Boolean {
         return getUUIDByKeyName(collection, keyName) != null
     }
 
-    private fun getUUIDByKeyName(collection: String?, keyName: String?): String? {
+    private suspend fun getUUIDByKeyName(collection: String?, keyName: String?): String? {
         return try {
-            val row = session!!.execute(
-                "SELECT * FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
-                        " WHERE name = '" + keyName + "' AND collection = '" + collection + "'"
-            ).one()
+            val row = databaseRequestRetry {
+                session!!.execute(
+                    "SELECT * FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
+                            " WHERE name = '" + keyName + "' AND collection = '" + collection + "'"
+                ).one()
+            }
             row?.getObject("uuid_key")?.toString().toString()
         } catch (e: DriverTimeoutException) {
             println(e.message)
@@ -194,13 +229,15 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun createKeysTableIfNotExists() {
+    suspend fun createKeysTableIfNotExists() {
         try {
-            session!!.execute(
-                "CREATE TABLE IF NOT EXISTS " + keyspace + ".alternate_keys_storage (name text, collection text, " +
-                        "uuid_key uuid, " +
-                        "PRIMARY KEY (name, collection))"
-            )
+            databaseRequestRetry {
+                session!!.execute(
+                    "CREATE TABLE IF NOT EXISTS " + keyspace + ".alternate_keys_storage (name text, collection text, " +
+                            "uuid_key uuid, " +
+                            "PRIMARY KEY (name, collection))"
+                )
+            }
         } catch (e: DriverTimeoutException) {
             println(e.message)
         } catch (e: QueryExecutionException) {
@@ -210,12 +247,14 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun getByIdAndTimestampFromCollection(collection: String?, id: String?, timestamp: String?): String? {
+    suspend fun getByIdAndTimestampFromCollection(collection: String?, id: String?, timestamp: String?): String? {
         return try {
-            val row = session!!.execute(
-                "SELECT * FROM " + keyspace + "." + collection +
-                        " WHERE id = " + id + " AND time = " + timestamp + " ALLOW FILTERING"
-            ).one()
+            val row = databaseRequestRetry {
+                session!!.execute(
+                    "SELECT * FROM " + keyspace + "." + collection +
+                            " WHERE id = " + id + " AND time = " + timestamp + " ALLOW FILTERING"
+                ).one()
+            }
             row?.getObject("json")?.toString()
         } catch (e: DriverTimeoutException) {
             println(e.message)
@@ -242,9 +281,10 @@ class CassandraConnector(args: Array<String>) {
         return comparableRecords
     }
 
-    fun getByIdFromCollection(collection: String?, id: String?): String? {
+    suspend fun getByIdFromCollection(collection: String?, id: String?): String? {
         return try {
-            val row = session!!.execute("SELECT * FROM $keyspace.$collection WHERE id = $id").one()
+            val row =
+                databaseRequestRetry { session!!.execute("SELECT * FROM $keyspace.$collection WHERE id = $id").one() }
             row?.getObject("json")?.toString()
         } catch (e: DriverTimeoutException) {
             println(e.message)
@@ -258,11 +298,11 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun getIdsFromCollection(table: String?): List<String> {
+    suspend fun getIdsFromCollection(table: String?): List<String> {
         return try {
             val idsList: MutableList<String> = ArrayList()
-            val rows = session!!.execute("SELECT * FROM $keyspace.$table").all()
-            val records = sortByTimestamp(rows)
+            val rows = databaseRequestRetry<List<Row>> { session!!.execute("SELECT * FROM $keyspace.$table").all() }
+            val records = sortByTimestamp(rows!!)
             for (record in records) {
                 record.id.let { idsList.add(it) }
             }
@@ -279,38 +319,40 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    private val allTables: List<String>?
-        get() = try {
+    private suspend fun allTables(): List<String> {
+        return try {
             val tables: MutableList<String> = ArrayList()
-            val rows = session!!.execute("SELECT * FROM system_schema.tables WHERE keyspace_name = '$keyspace'").all()
-            for (row in rows) {
+            val rows = databaseRequestRetry<List<Row>> {
+                session!!.execute("SELECT * FROM system_schema.tables WHERE keyspace_name = '$keyspace'").all()
+            }
+            for (row in rows!!) {
                 tables.add(Objects.requireNonNull(row.getObject("table_name")).toString())
             }
             tables
         } catch (e: DriverTimeoutException) {
             println(e.message)
-            null
+            emptyList()
         } catch (e: QueryExecutionException) {
             println(e.message)
-            null
+            emptyList()
         } catch (e: QueryValidationException) {
             println(e.message)
-            null
+            emptyList()
         }
-
-    fun isCollectionExists(table: String?): Boolean {
-        val tableNames = allTables
-        return tableNames != null && tableNames.contains(table)
     }
 
-    fun insertIntoTable(table: String, `object`: String): String? {
+    suspend fun isCollectionExists(table: String?): Boolean = allTables().contains(table)
+
+    suspend fun insertIntoTable(table: String, `object`: String): String? {
         val uuid = UUID.randomUUID()
         return try {
             createTableIfNotExists(table)
-            session!!.execute(
-                "INSERT INTO " + keyspace + "." + table +
-                        " (id,json,time) VALUES (" + uuid + ", '" + `object` + "', toTimestamp(now()))"
-            )
+            databaseRequestRetry {
+                session!!.execute(
+                    "INSERT INTO " + keyspace + "." + table +
+                            " (id,json,time) VALUES (" + uuid + ", '" + `object` + "', toTimestamp(now()))"
+                )
+            }
             uuid.toString()
         } catch (e: DriverTimeoutException) {
             println(e.message)
@@ -324,12 +366,14 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun updateRecordInCollection(collection: String, id: String, `object`: String) {
+    suspend fun updateRecordInCollection(collection: String, id: String, updatedRecord: String) {
         try {
-            session!!.execute(
-                "UPDATE " + keyspace + "." + collection +
-                        " SET json = '" + `object` + "', time = toTimestamp(now()) WHERE id = " + id
-            )
+            databaseRequestRetry {
+                session!!.execute(
+                    "UPDATE " + keyspace + "." + collection +
+                            " SET json = '" + updatedRecord + "', time = toTimestamp(now()) WHERE id = " + id
+                )
+            }
         } catch (e: DriverTimeoutException) {
             println(e.message)
         } catch (e: QueryExecutionException) {
@@ -339,17 +383,19 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun isIdExistsInCollection(collection: String?, id: String?): Boolean {
+    suspend fun isIdExistsInCollection(collection: String?, id: String?): Boolean {
         return getByIdFromCollection(collection, id) != null
     }
 
-    fun isTimestampExistsInCollection(collection: String?, id: String?, timestamp: String?): Boolean {
+    suspend fun isTimestampExistsInCollection(collection: String?, id: String?, timestamp: String?): Boolean {
         return getByIdAndTimestampFromCollection(collection, id, timestamp) != null
     }
 
-    fun deleteFromCollection(collection: String, id: String) {
+    suspend fun deleteFromCollection(collection: String, id: String) {
         try {
-            session!!.execute("DELETE FROM $keyspace.$collection WHERE id = $id")
+            databaseRequestRetry {
+                session!!.execute("DELETE FROM $keyspace.$collection WHERE id = $id")
+            }
         } catch (e: DriverTimeoutException) {
             println(e.message)
         } catch (e: QueryExecutionException) {
@@ -359,9 +405,11 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun clearTable(collection: String?) {
+    suspend fun clearTable(collection: String?) {
         try {
-            session!!.execute("TRUNCATE $keyspace.$collection")
+            databaseRequestRetry {
+                session!!.execute("TRUNCATE $keyspace.$collection")
+            }
         } catch (e: DriverTimeoutException) {
             println(e.message)
         } catch (e: QueryExecutionException) {
@@ -371,17 +419,21 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun deleteRowsWithoutAlternateKeys(collection: String?) {
+    suspend fun deleteRowsWithoutAlternateKeys(collection: String?) {
         try {
             val alternateKeysIds = getAlternateKeysIds(collection)
             if (alternateKeysIds.isEmpty()) {
                 clearTable(collection)
             } else {
-                val rows = session!!.execute("SELECT id FROM $keyspace.$collection").all()
-                for (row in rows) {
+                val rows = databaseRequestRetry<List<Row>> {
+                    session!!.execute("SELECT id FROM $keyspace.$collection").all()
+                }
+                for (row in rows!!) {
                     val id = row.getObject("id").toString()
                     if (!alternateKeysIds.contains(id)) {
-                        session!!.execute("DELETE FROM $keyspace.$collection WHERE id = $id")
+                        databaseRequestRetry {
+                            session!!.execute("DELETE FROM $keyspace.$collection WHERE id = $id")
+                        }
                     }
                 }
             }
@@ -394,14 +446,16 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    private fun getAlternateKeysIds(collection: String?): List<String> {
+    private suspend fun getAlternateKeysIds(collection: String?): List<String> {
         return try {
             val ids: MutableList<String> = ArrayList()
-            val rows = session!!.execute(
-                "SELECT uuid_key FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
-                        " WHERE collection = '" + collection + "' ALLOW FILTERING"
-            ).all()
-            for (row in rows) {
+            val rows = databaseRequestRetry<List<Row>> {
+                session!!.execute(
+                    "SELECT uuid_key FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
+                            " WHERE collection = '" + collection + "' ALLOW FILTERING"
+                ).all()
+            }
+            for (row in rows!!) {
                 ids.add(Objects.requireNonNull(row.getObject("uuid_key")).toString())
             }
             ids
@@ -417,9 +471,11 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun dropTable(collection: String) {
+    suspend fun dropTable(collection: String) {
         try {
-            session!!.execute("DROP TABLE $keyspace.$collection")
+            databaseRequestRetry {
+                session!!.execute("DROP TABLE $keyspace.$collection")
+            }
         } catch (e: DriverTimeoutException) {
             println(e.message)
         } catch (e: QueryExecutionException) {
@@ -429,9 +485,11 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    fun dropKeySpace(name: String) {
+    suspend fun dropKeySpace(name: String) {
         try {
-            session!!.execute("DROP KEYSPACE $name")
+            databaseRequestRetry {
+                session!!.execute("DROP KEYSPACE $name")
+            }
         } catch (e: DriverTimeoutException) {
             println(e.message)
         } catch (e: QueryExecutionException) {
@@ -447,12 +505,12 @@ class CassandraConnector(args: Array<String>) {
 
     init {
         readCommandLineArgs(args)
-        val credentials = GetDBCredentials("$FOLDER_PATH/$CRADLE_CONFIDENTIAL_FILE_NAME")!!
+        val credentials = getDBCredentials("$FOLDER_PATH/$CRADLE_CONFIDENTIAL_FILE_NAME")!!
         host = credentials.host
         dataCenter = credentials.dataCenter
         username = credentials.username
         password = credentials.password
-        keyspace = GetKeyspaceName("$FOLDER_PATH/$CUSTOM_JSON_FILE")
+        keyspace = getKeyspaceName("$FOLDER_PATH/$CUSTOM_JSON_FILE")
         port = credentials.port
     }
 }

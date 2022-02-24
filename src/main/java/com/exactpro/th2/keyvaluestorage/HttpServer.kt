@@ -41,9 +41,8 @@ class HttpServer {
             }
 
             routing {
-
                 val cassandraConnector = CassandraConnector(args)
-                cassandraConnector.connect()
+                cassandraConnector.connect { cassandraConnector.createKeySpaceIfNotExists() }
 
                 get("/idsFromCollection") {
                     val parameters = call.request.queryParameters
@@ -186,7 +185,11 @@ class HttpServer {
                         val collection = jsonData[COLLECTION].toString().toLowerCase()
                         if (cassandraConnector.isCollectionExists(collection)) {
                             id = cassandraConnector.getCorrectId(collection, id)
-                            if (cassandraConnector.isIdExistsInCollection(collection, cassandraConnector.getCorrectId(collection, id))) {
+                            if (cassandraConnector.isIdExistsInCollection(
+                                    collection,
+                                    cassandraConnector.getCorrectId(collection, id)
+                                )
+                            ) {
                                 cassandraConnector.updateRecordInCollection(
                                     collection,
                                     id.toString(),

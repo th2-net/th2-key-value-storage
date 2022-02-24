@@ -16,13 +16,14 @@
 
 package com.exactpro.th2.keyvaluestorage
 
-const val COLLECTION: String = "collection"
-const val ID: String = "id"
-const val PAYLOAD: String = "payload"
-const val WORKSPACE_LINKS: String = "workspace_links"
-const val TIMESTAMP: String = "timestamp"
+const val COLLECTION = "collection"
+const val ID = "id"
+const val PAYLOAD = "payload"
+const val WORKSPACE_LINKS = "workspace_links"
+const val TIMESTAMP = "timestamp"
 const val SORT = "sort"
 const val ASCENDING = "ascending"
 const val ALTERNATE_KEYS_STORAGE = "alternate_keys_storage"
 const val CRADLE_CONFIDENTIAL_FILE_NAME = "cradle.json"
 const val CUSTOM_JSON_FILE = "custom.json"
+const val DB_RETRY_DELAY: Long = 3000
