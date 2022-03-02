@@ -43,13 +43,6 @@ jobs:
           password: ${{ secrets.CR_PAT }}
       - run: echo "::set-output name=REPOSITORY_NAME::$(echo '${{ github.repository }}' | awk -F '/' '{print $2}')"
         id: meta
-      - name: Generate .proto description json
-        id: proto_json
-        run: |
-          gradle generateServiceDescriptions
-          echo "::set-output name=DESCRIPTION_JSON::$(cat serviceProtoDescription)"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push
         id: docker_build
         uses: docker/build-push-action@v2
@@ -61,4 +54,3 @@ jobs:
           tags: ghcr.io/${{ github.repository }}:${{ steps.release_ver.outputs.value }}
           labels: |
             com.exactpro.th2.${{ steps.meta.outputs.REPOSITORY_NAME }}=${{ steps.ver.outputs.value }}
-            protobuf-description-base64=${{ steps.proto_json.outputs.DESCRIPTION_JSON }}
