@@ -26,6 +26,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import mu.KotlinLogging
 import org.apache.commons.cli.*
 import java.io.File
 import java.io.IOException
@@ -45,6 +46,8 @@ class CassandraConnector(args: Array<String>) {
     private val keyspace: String?
     private val port: String?
 
+    private val logger = KotlinLogging.logger {}
+
     private suspend fun <T> databaseRequestRetry(request: () -> T): T? {
         var goodRequest = false
         var result: T? = null
@@ -63,20 +66,17 @@ class CassandraConnector(args: Array<String>) {
         return result
     }
 
-    private fun readCommandLineArgs(args: Array<String>) {
-        val options = Options()
-        val configs = Option("c", "configs", true, "configs folder path")
-        configs.isRequired = true
-        options.addOption(configs)
-        val parser: CommandLineParser = DefaultParser()
-        var cmd: CommandLine? = null
-        try {
-            cmd = parser.parse(options, args)
-        } catch (e: ParseException) {
-            println(e.message)
-            exitProcess(1)
+    private fun findJsonPlugin(name: String): String {
+        val defaultPaths = listOf("src/main/resources", "src/test/resources", "/home", ".", "configs")
+        for (path in defaultPaths) {
+            for (file in File(path).walk()) {
+                if (file.name.contains(name)) {
+                    logger.debug { "FOLDER PATH: ${file.parent}" }
+                    return file.parent
+                }
+            }
         }
-        FOLDER_PATH = cmd!!.getOptionValue("configs")
+        throw IOException("Cannot find plugin '$name' from paths: $defaultPaths")
     }
 
     private fun getKeyspaceName(keyspaceNameStoragePath: String): String? {
@@ -85,7 +85,7 @@ class CassandraConnector(args: Array<String>) {
             val jsonMap = objectMapper.readValue(File(keyspaceNameStoragePath), HashMap::class.java)
             return jsonMap["keyspace"].toString()
         } catch (e: IOException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         }
     }
@@ -95,7 +95,7 @@ class CassandraConnector(args: Array<String>) {
             val objectMapper = ObjectMapper()
             objectMapper.readValue(File(jsonCredentialsPath), DBCredentials::class.java)
         } catch (e: IOException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         }
     }
@@ -129,11 +129,11 @@ class CassandraConnector(args: Array<String>) {
                 session!!.execute("CREATE KEYSPACE IF NOT EXISTS $keyspace WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 3}")
             }
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         }
     }
 
@@ -149,16 +149,16 @@ class CassandraConnector(args: Array<String>) {
             }
             result
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         } catch (e: JsonProcessingException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         }
     }
@@ -178,11 +178,11 @@ class CassandraConnector(args: Array<String>) {
                 )
             }
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         }
     }
 
@@ -196,11 +196,11 @@ class CassandraConnector(args: Array<String>) {
                 )
             }
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         }
     }
 
@@ -218,13 +218,13 @@ class CassandraConnector(args: Array<String>) {
             }
             row?.getObject("uuid_key")?.toString().toString()
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         }
     }
@@ -239,11 +239,11 @@ class CassandraConnector(args: Array<String>) {
                 )
             }
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         }
     }
 
@@ -257,13 +257,13 @@ class CassandraConnector(args: Array<String>) {
             }
             row?.getObject("json")?.toString()
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         }
     }
@@ -287,13 +287,13 @@ class CassandraConnector(args: Array<String>) {
                 databaseRequestRetry { session!!.execute("SELECT * FROM $keyspace.$collection WHERE id = $id").one() }
             row?.getObject("json")?.toString()
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         }
     }
@@ -308,13 +308,13 @@ class CassandraConnector(args: Array<String>) {
             }
             idsList
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         }
     }
@@ -330,13 +330,13 @@ class CassandraConnector(args: Array<String>) {
             }
             tables
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         }
     }
@@ -355,13 +355,13 @@ class CassandraConnector(args: Array<String>) {
             }
             uuid.toString()
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             null
         }
     }
@@ -375,11 +375,11 @@ class CassandraConnector(args: Array<String>) {
                 )
             }
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         }
     }
 
@@ -397,11 +397,11 @@ class CassandraConnector(args: Array<String>) {
                 session!!.execute("DELETE FROM $keyspace.$collection WHERE id = $id")
             }
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         }
     }
 
@@ -411,11 +411,11 @@ class CassandraConnector(args: Array<String>) {
                 session!!.execute("TRUNCATE $keyspace.$collection")
             }
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         }
     }
 
@@ -438,11 +438,11 @@ class CassandraConnector(args: Array<String>) {
                 }
             }
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         }
     }
 
@@ -460,13 +460,13 @@ class CassandraConnector(args: Array<String>) {
             }
             ids
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
             emptyList()
         }
     }
@@ -477,11 +477,11 @@ class CassandraConnector(args: Array<String>) {
                 session!!.execute("DROP TABLE $keyspace.$collection")
             }
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         }
     }
 
@@ -491,11 +491,11 @@ class CassandraConnector(args: Array<String>) {
                 session!!.execute("DROP KEYSPACE $name")
             }
         } catch (e: DriverTimeoutException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryExecutionException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         } catch (e: QueryValidationException) {
-            println(e.message)
+            logger.error(e) { "ERROR" }
         }
     }
 
@@ -504,7 +504,7 @@ class CassandraConnector(args: Array<String>) {
     }
 
     init {
-        readCommandLineArgs(args)
+        FOLDER_PATH = findJsonPlugin(CUSTOM_JSON_FILE)
         val credentials = getDBCredentials("$FOLDER_PATH/$CRADLE_CONFIDENTIAL_FILE_NAME")!!
         host = credentials.host
         dataCenter = credentials.dataCenter

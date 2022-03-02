@@ -30,4 +30,7 @@ class DBCredentials {
 
     @JvmField
     var password: String? = null
+
+    @JvmField
+    var keyspace: String? = null
 }

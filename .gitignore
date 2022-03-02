@@ -2,7 +2,7 @@
 .gradle
 
 #th2 config files
-/config
+/configs
 
 #elcipse files
 .metadata
