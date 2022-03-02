@@ -32,13 +32,13 @@ jobs:
       with:
         path: ./gradle.properties
         property: release_version
-    - name: Generate .proto description json
-      id: proto_json
-      run: |
-        gradle generateServiceDescriptions
-        echo "::set-output name=DESCRIPTION_JSON::$(cat serviceProtoDescription)"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#    - name: Generate .proto description json
+#      id: proto_json
+#      run: |
+#        gradle generateServiceDescriptions
+#        echo "::set-output name=DESCRIPTION_JSON::$(cat serviceProtoDescription)"
+#      env:
+#        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Build and push
       id: docker_build
       uses: docker/build-push-action@v2
