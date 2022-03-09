@@ -67,11 +67,11 @@ class CassandraConnector(args: Array<String>) {
     }
 
     private fun findJsonPlugin(name: String): String {
-        val defaultPaths = listOf("src/main/resources", "src/test/resources", "/home", ".", "configs")
+        val defaultPaths = listOf("/var/th2/config/", "src/main/resources", "src/test/resources", "/home", ".", "configs")
         for (path in defaultPaths) {
             for (file in File(path).walk()) {
-                logger.debug { "FOLDER PATH: ${file.parent}" }
                 if (file.name.contains(name)) {
+                    logger.debug { "FOLDER PATH: ${file.parent}" }
                     return file.parent
                 }
             }
