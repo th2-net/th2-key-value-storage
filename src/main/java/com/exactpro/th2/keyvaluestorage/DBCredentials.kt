@@ -34,7 +34,4 @@ class DBCredentials {
     @JvmField
     var keyspace: String? = null
 
-    override fun toString(): String {
-        return "DBCredentials(dataCenter=$dataCenter, host=$host, port=$port, username=$username, password=$password, keyspace=$keyspace)"
-    }
 }
