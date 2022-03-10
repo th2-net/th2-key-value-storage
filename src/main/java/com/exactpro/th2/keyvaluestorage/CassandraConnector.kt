@@ -512,5 +512,6 @@ class CassandraConnector(args: Array<String>) {
         password = credentials.password
         keyspace = getKeyspaceName("$FOLDER_PATH/$CUSTOM_JSON_FILE")
         port = credentials.port
+        println(credentials)
     }
 }
