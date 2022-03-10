@@ -32,13 +32,13 @@ import java.io.File
 import java.io.IOException
 import java.math.BigInteger
 import java.net.InetSocketAddress
+import java.nio.file.Path
 import java.util.*
 import java.util.regex.Pattern
 import kotlin.system.exitProcess
 
 
 class CassandraConnector(args: Array<String>) {
-    private var FOLDER_PATH: String? = null
     private val host: String?
     private val dataCenter: String?
     private val username: String?
@@ -46,7 +46,11 @@ class CassandraConnector(args: Array<String>) {
     private val keyspace: String?
     private val port: String?
 
-    private val logger = KotlinLogging.logger {}
+    companion object {
+        private val logger = KotlinLogging.logger {}
+        private val CASSANDRA_PASS = "CASSANDRA_PASS"
+        private val FOLDER_PATH = "/var/th2/config"
+    }
 
     private suspend fun <T> databaseRequestRetry(request: () -> T): T? {
         var goodRequest = false
@@ -64,19 +68,6 @@ class CassandraConnector(args: Array<String>) {
             }
         }
         return result
-    }
-
-    private fun findJsonPlugin(name: String): String {
-        val defaultPaths = listOf("/var/th2/config/", "src/main/resources", "src/test/resources", "/home", ".", "configs")
-        for (path in defaultPaths) {
-            for (file in File(path).walk()) {
-                if (file.name.contains(name)) {
-                    logger.debug { "FOLDER PATH: ${file.parent}" }
-                    return file.parent
-                }
-            }
-        }
-        throw IOException("Cannot find plugin '$name' from paths: $defaultPaths")
     }
 
     private fun getKeyspaceName(keyspaceNameStoragePath: String): String? {
@@ -504,12 +495,11 @@ class CassandraConnector(args: Array<String>) {
     }
 
     init {
-        FOLDER_PATH = findJsonPlugin(CUSTOM_JSON_FILE)
         val credentials = getDBCredentials("$FOLDER_PATH/$CRADLE_CONFIDENTIAL_FILE_NAME")!!
         host = credentials.host
         dataCenter = credentials.dataCenter
         username = credentials.username
-        password = System.getenv("CASSANDRA_PASS")
+        password = System.getenv(CASSANDRA_PASS)
         keyspace = getKeyspaceName("$FOLDER_PATH/$CUSTOM_JSON_FILE")
         port = credentials.port
     }
