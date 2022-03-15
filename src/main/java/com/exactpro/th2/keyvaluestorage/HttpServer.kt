@@ -28,6 +28,7 @@ import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import org.json.JSONObject
 import java.text.DateFormat
+import kotlin.system.measureTimeMillis
 
 class HttpServer {
 
@@ -81,7 +82,7 @@ class HttpServer {
                         if (cassandraConnector.isCollectionExists(collection)) {
                             var records: List<String> = listOf()
                             val time =
-                                measureTimeMillis { records = cassandraConnector.selectAllFromCollection(collection) }
+                                 measureTimeMillis { records = cassandraConnector.selectAllFromCollection(collection) }
                             returningStatistics.add(time.toString())
                             if (parameters.contains(SORT) && parameters[SORT].equals(ASCENDING)) {
                                 call.respond(HttpStatusCode.OK, records.toString())
