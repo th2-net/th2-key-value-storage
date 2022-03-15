@@ -33,4 +33,5 @@ class DBCredentials {
 
     @JvmField
     var keyspace: String? = null
+
 }
