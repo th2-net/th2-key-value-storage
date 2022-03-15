@@ -43,6 +43,17 @@ class HttpServer {
             routing {
                 val cassandraConnector = CassandraConnector(args)
                 cassandraConnector.connect { cassandraConnector.createKeySpaceIfNotExists() }
+                
+                val addingStatistics: MutableList<String> = mutableListOf()
+                val returningStatistics: MutableList<String> = mutableListOf()
+
+                get("/getAddingStatistics") {
+                    call.respond(HttpStatusCode.OK, addingStatistics.toString())
+                }
+
+                get("/getReturningStatistics") {
+                    call.respond(HttpStatusCode.OK, returningStatistics.toString())
+                }
 
                 get("/idsFromCollection") {
                     val parameters = call.request.queryParameters
@@ -68,7 +79,10 @@ class HttpServer {
                     if (parameters.contains(COLLECTION)) {
                         val collection = parameters[COLLECTION]?.toLowerCase()
                         if (cassandraConnector.isCollectionExists(collection)) {
-                            val records = cassandraConnector.selectAllFromCollection(collection)
+                            var records: List<String> = listOf()
+                            val time =
+                                measureTimeMillis { records = cassandraConnector.selectAllFromCollection(collection) }
+                            returningStatistics.add(time.toString())
                             if (parameters.contains(SORT) && parameters[SORT].equals(ASCENDING)) {
                                 call.respond(HttpStatusCode.OK, records.toString())
                             } else {
@@ -99,11 +113,15 @@ class HttpServer {
                                                 timestamp
                                             )
                                         ) {
-                                            val result = cassandraConnector.getByIdAndTimestampFromCollection(
-                                                collection,
-                                                id,
-                                                timestamp
-                                            )
+                                           var result: String? = null
+                                            val time = measureTimeMillis {
+                                                result = cassandraConnector.getByIdAndTimestampFromCollection(
+                                                    collection,
+                                                    id,
+                                                    timestamp
+                                                )
+                                            }
+                                            returningStatistics.add(time.toString())
                                             call.respond(HttpStatusCode.OK, result.toString())
                                         } else {
                                             call.respond(
@@ -112,7 +130,11 @@ class HttpServer {
                                             )
                                         }
                                     }
-                                    val result = cassandraConnector.getByIdFromCollection(collection, key)
+                                    var result: String? = null
+                                    val time = measureTimeMillis {
+                                        result = cassandraConnector.getByIdFromCollection(collection, key)
+                                    }
+                                    returningStatistics.add(time.toString())
                                     call.respond(HttpStatusCode.OK, result.toString())
                                 } else {
                                     call.respond(HttpStatusCode.NotFound, "Id $id in collection $collection not found")
@@ -154,10 +176,14 @@ class HttpServer {
                     val jsonData = JSONObject(call.receive<String>())
                     if (jsonData.length() > 0 && jsonData.has(COLLECTION) && jsonData.has(PAYLOAD)) {
                         val collection = jsonData[COLLECTION].toString().toLowerCase()
-                        val uuid = cassandraConnector.insertIntoTable(
-                            collection,
-                            jsonData[PAYLOAD].toString()
-                        )
+                        var uuid: String? = null
+                        val time = measureTimeMillis {
+                            uuid = cassandraConnector.insertIntoTable(
+                                collection,
+                                jsonData[PAYLOAD].toString()
+                            )
+                        }
+                        addingStatistics.add(time.toString())
                         if (jsonData.has(ID)) {
                             val id = jsonData[ID].toString()
                             cassandraConnector.createKeysTableIfNotExists()
