@@ -1,0 +1,20 @@
+{
+  "clientCacheTimeout": "60",
+  "codecBatchesCacheSize": "100",
+  "codecCacheSize": "1000",
+  "cradleDispatcherPoolSize": "10",
+  "decodeMessageConsumerCount": "20022",
+  "eventCacheSize": "1000",
+  "eventSearchChunkSize": "1000",
+  "hostname": "localhost",
+  "ioDispatcherThreadPoolSize": "10",
+  "maxMessagesLimit": "5000",
+  "messageCacheSize": "1000",
+  "messageSearchPipelineBuffer": "2000",
+  "port": "8081",
+  "rabbitBatchMergeBuffer": "3000",
+  "rabbitMergedBatchSize": "10",
+  "responseTimeout": "60000",
+  "serverCacheTimeout": "60000",
+  "keyspace": "json_storage"
+}

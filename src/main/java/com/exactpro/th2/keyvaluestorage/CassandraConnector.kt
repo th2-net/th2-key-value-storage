@@ -15,10 +15,14 @@
  */
 package com.exactpro.th2.keyvaluestorage
 
+import com.codahale.metrics.MetricRegistry
+import com.codahale.metrics.Slf4jReporter
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.DriverTimeoutException
 import com.datastax.oss.driver.api.core.connection.ConnectionInitException
+import com.datastax.oss.driver.api.core.cql.ResultSet
 import com.datastax.oss.driver.api.core.cql.Row
+import com.datastax.oss.driver.api.core.cql.SimpleStatement
 import com.datastax.oss.driver.api.core.servererrors.QueryExecutionException
 import com.datastax.oss.driver.api.core.servererrors.QueryValidationException
 import com.fasterxml.jackson.core.JsonProcessingException
@@ -27,15 +31,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import mu.KotlinLogging
-import org.apache.commons.cli.*
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.io.IOException
 import java.math.BigInteger
 import java.net.InetSocketAddress
-import java.nio.file.Path
+import java.sql.Statement
 import java.util.*
+import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
-import kotlin.system.exitProcess
 
 
 class CassandraConnector(args: Array<String>) {
@@ -53,6 +57,7 @@ class CassandraConnector(args: Array<String>) {
     }
 
     private suspend fun <T> databaseRequestRetry(request: () -> T): T? {
+
         var goodRequest = false
         var result: T? = null
         while (!goodRequest) {
@@ -131,7 +136,14 @@ class CassandraConnector(args: Array<String>) {
     suspend fun selectAllFromCollection(table: String?): List<String> {
         return try {
             val rows =
-                databaseRequestRetry<List<Row>> { session!!.execute("SELECT * FROM $keyspace.$table").all() }
+                databaseRequestRetry<List<Row>> {
+                    val statement = SimpleStatement.newInstance(
+                        "SELECT * FROM $keyspace.$table"
+                    ).setTracing(true)
+                    val set = session!!.execute(statement)
+                    logger.debug { "SELECT: ${set.executionInfo.queryTrace.parameters}\nTIME: ${set.executionInfo.queryTrace.durationMicros}" }
+                    set.all()
+                }
             val result: MutableList<String> = ArrayList()
             val records = sortByTimestamp(rows!!)
             for (record in records) {
@@ -180,11 +192,14 @@ class CassandraConnector(args: Array<String>) {
     suspend fun setDefaultKey(collection: String, keyName: String, uuidValue: String) {
         try {
             databaseRequestRetry {
-                session!!.execute(
-                    "INSERT INTO " +
-                            keyspace + "." + ALTERNATE_KEYS_STORAGE + " (name, collection, uuid_key) " +
-                            "VALUES ('" + keyName + "', '" + collection + "', " + uuidValue + ")"
-                )
+                val statement =
+                    SimpleStatement.newInstance(
+                        "INSERT INTO " +
+                                keyspace + "." + ALTERNATE_KEYS_STORAGE + " (name, collection, uuid_key) " +
+                                "VALUES ('" + keyName + "', '" + collection + "', " + uuidValue + ")"
+                    ).setTracing(true)
+                val set = session!!.execute(statement)
+                logger.debug { "INSERT: ${set.executionInfo.queryTrace.parameters}\nTIME: ${set.executionInfo.queryTrace.durationMicros}" }
             }
         } catch (e: DriverTimeoutException) {
             logger.error(e) { "ERROR" }
@@ -202,10 +217,14 @@ class CassandraConnector(args: Array<String>) {
     private suspend fun getUUIDByKeyName(collection: String?, keyName: String?): String? {
         return try {
             val row = databaseRequestRetry {
-                session!!.execute(
-                    "SELECT * FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
-                            " WHERE name = '" + keyName + "' AND collection = '" + collection + "'"
-                ).one()
+                val statement =
+                    SimpleStatement.newInstance(
+                        "SELECT * FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
+                                " WHERE name = '" + keyName + "' AND collection = '" + collection + "'"
+                    ).setTracing(true)
+                val set = session!!.execute(statement)
+                logger.debug { "SELECT: ${set.executionInfo.queryTrace.parameters}\nTIME: ${set.executionInfo.queryTrace.durationMicros}" }
+                set.one()
             }
             row?.getObject("uuid_key")?.toString().toString()
         } catch (e: DriverTimeoutException) {
@@ -241,10 +260,14 @@ class CassandraConnector(args: Array<String>) {
     suspend fun getByIdAndTimestampFromCollection(collection: String?, id: String?, timestamp: String?): String? {
         return try {
             val row = databaseRequestRetry {
-                session!!.execute(
-                    "SELECT * FROM " + keyspace + "." + collection +
-                            " WHERE id = " + id + " AND time = " + timestamp + " ALLOW FILTERING"
-                ).one()
+                val statement =
+                    SimpleStatement.newInstance(
+                        "SELECT * FROM " + keyspace + "." + collection +
+                                " WHERE id = " + id + " AND time = " + timestamp + " ALLOW FILTERING"
+                    ).setTracing(true)
+                val set = session!!.execute(statement)
+                logger.debug { "SELECT: ${set.executionInfo.queryTrace.parameters}\nTIME: ${set.executionInfo.queryTrace.durationMicros}" }
+                set.one()
             }
             row?.getObject("json")?.toString()
         } catch (e: DriverTimeoutException) {
@@ -275,7 +298,14 @@ class CassandraConnector(args: Array<String>) {
     suspend fun getByIdFromCollection(collection: String?, id: String?): String? {
         return try {
             val row =
-                databaseRequestRetry { session!!.execute("SELECT * FROM $keyspace.$collection WHERE id = $id").one() }
+                databaseRequestRetry {
+                    val statement =
+                        SimpleStatement.newInstance("SELECT * FROM $keyspace.$collection WHERE id = $id")
+                            .setTracing(true)
+                    val set: ResultSet = session!!.execute(statement)
+                    logger.debug { "SELECT: ${set.executionInfo.queryTrace.parameters}\nTIME: ${set.executionInfo.queryTrace.durationMicros}" }
+                    set.one()
+                }
             row?.getObject("json")?.toString()
         } catch (e: DriverTimeoutException) {
             logger.error(e) { "ERROR" }
@@ -292,7 +322,14 @@ class CassandraConnector(args: Array<String>) {
     suspend fun getIdsFromCollection(table: String?): List<String> {
         return try {
             val idsList: MutableList<String> = ArrayList()
-            val rows = databaseRequestRetry<List<Row>> { session!!.execute("SELECT * FROM $keyspace.$table").all() }
+            val rows = databaseRequestRetry<List<Row>> {
+                val statement =
+                    SimpleStatement.newInstance("SELECT * FROM $keyspace.$table")
+                        .setTracing(true)
+                val set = session!!.execute(statement)
+                logger.debug { "SELECT: ${set.executionInfo.queryTrace.parameters}\nTIME: ${set.executionInfo.queryTrace.durationMicros}\n" }
+                set.all()
+            }
             val records = sortByTimestamp(rows!!)
             for (record in records) {
                 record.id.let { idsList.add(it) }
@@ -314,7 +351,12 @@ class CassandraConnector(args: Array<String>) {
         return try {
             val tables: MutableList<String> = ArrayList()
             val rows = databaseRequestRetry<List<Row>> {
-                session!!.execute("SELECT * FROM system_schema.tables WHERE keyspace_name = '$keyspace'").all()
+                val statement =
+                    SimpleStatement.newInstance("SELECT * FROM system_schema.tables WHERE keyspace_name = '$keyspace'")
+                        .setTracing(true)
+                val set = session!!.execute(statement)
+                logger.debug { "SELECT: ${set.executionInfo.queryTrace.parameters}\nTIME: ${set.executionInfo.queryTrace.durationMicros}\n" }
+                set.all()
             }
             for (row in rows!!) {
                 tables.add(Objects.requireNonNull(row.getObject("table_name")).toString())
@@ -339,10 +381,13 @@ class CassandraConnector(args: Array<String>) {
         return try {
             createTableIfNotExists(table)
             databaseRequestRetry {
-                session!!.execute(
-                    "INSERT INTO " + keyspace + "." + table +
-                            " (id,json,time) VALUES (" + uuid + ", '" + `object` + "', toTimestamp(now()))"
-                )
+                val statement =
+                    SimpleStatement.newInstance(
+                        "INSERT INTO " + keyspace + "." + table +
+                                " (id,json,time) VALUES (" + uuid + ", '" + `object` + "', toTimestamp(now()))"
+                    ).setTracing(true)
+                val set = session!!.execute(statement)
+                logger.debug { "INSERT: ${set.executionInfo.queryTrace.parameters}\nTIME: ${set.executionInfo.queryTrace.durationMicros}\n" }
             }
             uuid.toString()
         } catch (e: DriverTimeoutException) {
@@ -359,11 +404,14 @@ class CassandraConnector(args: Array<String>) {
 
     suspend fun updateRecordInCollection(collection: String, id: String, updatedRecord: String) {
         try {
-            databaseRequestRetry {
-                session!!.execute(
+            val statement =
+                SimpleStatement.newInstance(
                     "UPDATE " + keyspace + "." + collection +
                             " SET json = '" + updatedRecord + "', time = toTimestamp(now()) WHERE id = " + id
-                )
+                ).setTracing(true)
+            databaseRequestRetry {
+                val set = session!!.execute(statement)
+                logger.debug { "UPDATE: ${set.executionInfo.queryTrace.events}\nTIME: ${set.executionInfo.queryTrace.durationMicros}\n" }
             }
         } catch (e: DriverTimeoutException) {
             logger.error(e) { "ERROR" }
@@ -417,7 +465,14 @@ class CassandraConnector(args: Array<String>) {
                 clearTable(collection)
             } else {
                 val rows = databaseRequestRetry<List<Row>> {
-                    session!!.execute("SELECT id FROM $keyspace.$collection").all()
+                    val statement = SimpleStatement.newInstance("SELECT id FROM $keyspace.$collection").setTracing(true)
+                    val set = session!!.execute(statement)
+                    logger.debug {
+                        "SELECT: ${set.executionInfo.queryTrace.events}\n" +
+                                "TIME: ${set.executionInfo.queryTrace.durationMicros}\n" +
+                                "\n"
+                    }
+                    set.all()
                 }
                 for (row in rows!!) {
                     val id = row.getObject("id").toString()
@@ -441,10 +496,13 @@ class CassandraConnector(args: Array<String>) {
         return try {
             val ids: MutableList<String> = ArrayList()
             val rows = databaseRequestRetry<List<Row>> {
-                session!!.execute(
-                    "SELECT uuid_key FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
-                            " WHERE collection = '" + collection + "' ALLOW FILTERING"
-                ).all()
+                val statement = SimpleStatement.newInstance("SELECT uuid_key FROM " + keyspace + "." + ALTERNATE_KEYS_STORAGE +
+                        " WHERE collection = '" + collection + "' ALLOW FILTERING").setTracing(true)
+                val set = session!!.execute(statement)
+                logger.debug { "SELECT: ${set.executionInfo.queryTrace.events}\n" +
+                        "TIME: ${set.executionInfo.queryTrace.durationMicros}\n" +
+                        "\n" }
+                set.all()
             }
             for (row in rows!!) {
                 ids.add(Objects.requireNonNull(row.getObject("uuid_key")).toString())

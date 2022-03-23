@@ -1,0 +1,8 @@
+{
+  "dataCenter": "datacenter1",
+  "host": "th2-qa",
+  "port": "32110",
+  "keyspace": "schema_commonv3",
+  "username": "th2",
+  "password": "RkFosP24"
+}
