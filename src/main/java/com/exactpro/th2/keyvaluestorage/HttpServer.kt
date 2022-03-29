@@ -28,7 +28,6 @@ import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import org.json.JSONObject
 import java.text.DateFormat
-import kotlin.system.measureTimeMillis
 
 class HttpServer {
 
@@ -100,11 +99,11 @@ class HttpServer {
                                                 timestamp
                                             )
                                         ) {
-                                           var result = cassandraConnector.getByIdAndTimestampFromCollection(
-                                                    collection,
-                                                    id,
-                                                    timestamp
-                                                )
+                                            var result = cassandraConnector.getByIdAndTimestampFromCollection(
+                                                collection,
+                                                id,
+                                                timestamp
+                                            )
                                             call.respond(HttpStatusCode.OK, result.toString())
                                         } else {
                                             call.respond(
@@ -155,10 +154,10 @@ class HttpServer {
                     val jsonData = JSONObject(call.receive<String>())
                     if (jsonData.length() > 0 && jsonData.has(COLLECTION) && jsonData.has(PAYLOAD)) {
                         val collection = jsonData[COLLECTION].toString().toLowerCase()
-                        var uuid = cassandraConnector.insertIntoTable(
-                                collection,
-                                jsonData[PAYLOAD].toString()
-                            )
+                        val uuid = cassandraConnector.insertIntoTable(
+                            collection,
+                            jsonData[PAYLOAD].toString()
+                        )
                         if (jsonData.has(ID)) {
                             val id = jsonData[ID].toString()
                             cassandraConnector.createKeysTableIfNotExists()
