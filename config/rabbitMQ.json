@@ -1,0 +1,8 @@
+{
+  "host": "th2-qa",
+  "port": "32100",
+  "vHost": "th2-commonv3",
+  "username": "th2",
+  "password": "KKftsnE6453",
+  "exchangeName": "demo_exchange"
+}

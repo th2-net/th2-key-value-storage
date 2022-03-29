@@ -1,0 +1,102 @@
+{
+  "queues": {
+    "estore-pin": {
+      "attributes": ["publish", "event"],
+      "exchange": "th2-exchange",
+      "filters": [],
+      "name": "key[th2-commonv3:rpt-data-provider-debug-l-2:estore-pin]",
+      "queue": ""
+    },
+    "from_codec_codec-fix": {
+      "attributes": [
+        "arfq01fix04",
+        "test-images",
+        "arfq02dc10",
+        "subscribe",
+        "arfq02fix11",
+        "ER_log.txt",
+        "arfq02fix10",
+        "from_codec",
+        "parsed"
+      ],
+      "exchange": "th2-exchange",
+      "filters": [],
+      "name": "",
+      "queue": "link[th2-commonv3:rpt-data-provider-debug-l-2:from_codec_codec-fix]"
+    },
+    "from_codec_codec-itch": {
+      "attributes": ["subscribe", "from_codec", "parsed"],
+      "exchange": "th2-exchange",
+      "filters": [],
+      "name": "",
+      "queue": "link[th2-commonv3:rpt-data-provider-debug-l-2:from_codec_codec-itch]"
+    },
+    "from_codec_codec-ouch": {
+      "attributes": ["subscribe", "110AA3_ouch", "from_codec", "parsed"],
+      "exchange": "th2-exchange",
+      "filters": [],
+      "name": "",
+      "queue": "link[th2-commonv3:rpt-data-provider-debug-l-2:from_codec_codec-ouch]"
+    },
+    "to_codec_codec-fix": {
+      "attributes": [
+        "arfq01fix04",
+        "test-images",
+        "arfq02dc10",
+        "fixaliastest",
+        "arfq02fix11",
+        "ER_log.txt",
+        "arfq02fix10",
+        "es2aliastest",
+        "raw",
+        "csaliastest",
+        "to_codec",
+        "es1aliastest",
+        "publish",
+        "orsaliastest",
+        "first"
+      ],
+      "exchange": "th2-exchange",
+      "filters": [],
+      "name": "key[th2-commonv3:rpt-data-provider-debug-l-2:to_codec_codec-fix]",
+      "queue": ""
+    },
+    "to_codec_codec-itch": {
+      "attributes": [
+        "239.105.210.13:21006_ITCH",
+        "JP26791055-239.105.210.4:21003__QA",
+        "239.105.210.6:21004_ITCH",
+        "JP26791055-239.105.210.13:21006__QA",
+        "raw",
+        "JP26791055-239.105.210.11:21015__QA",
+        "JP26791055-239.105.210.4:21003_QA",
+        "to_codec",
+        "JP26791055-239.105.210.13:21006_QA",
+        "JP26791055-239.105.210.9:21005__QA",
+        "1",
+        "239.105.210.9:21005_ITCH",
+        "JP26791055-239.105.210.2:21002__QA",
+        "JP26791055-239.105.210.7:21008__QA",
+        "239.105.210.2:21002_ITCH",
+        "JP26791055-239.105.210.10:21010__QA",
+        "239.105.210.7:21008_ITCH",
+        "publish",
+        "239.105.210.10:21010_ITCH",
+        "JP26791055-239.105.210.6:21004__QA",
+        "239.105.210.4:21003_ITCH",
+        "239.105.210.11:21015_ITCH"
+      ],
+      "exchange": "th2-exchange",
+      "filters": [],
+      "name": "key[th2-commonv3:rpt-data-provider-debug-l-2:to_codec_codec-itch]",
+      "queue": ""
+    },
+    "to_codec_codec-ouch": {
+      "attributes": ["110AA3_ouch", "publish", "raw", "to_codec"],
+      "exchange": "th2-exchange",
+      "filters": [],
+      "name": "key[th2-commonv3:rpt-data-provider-debug-l-2:to_codec_codec-ouch]",
+      "queue": ""
+    }
+  }
+}
