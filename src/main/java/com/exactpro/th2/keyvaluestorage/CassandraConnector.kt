@@ -189,19 +189,19 @@ class CassandraConnector(args: Array<String>) {
         }
     }
 
-    suspend fun registerUser(name: String): String? {
+    suspend fun registerUser(name: String, preferences: String? = null): String? {
         try {
             val userId = UUID.randomUUID()
             val partitionKey = UUID.randomUUID()
             val userInsertionQuery = SimpleStatement.newInstance(
-                "INSERT INTO $keyspace.$USER (userId, name, preferences) VALUES ($userId, '$name', '{}');"
+                "INSERT INTO $keyspace.$USER (userId, name, preferences) VALUES ($userId, '$name', '${preferences ?: "${DEFAULT_USER_PREFERENCES}" }');"
             ).setTracing(true)
             val userInsertionCompletionStage: CompletionStage<AsyncResultSet>? = databaseRequestRetry {
                 session!!.executeAsync(userInsertionQuery)
             }
 
             val userInsertionResultSet = userInsertionCompletionStage?.await()
-            logger.debug { "INSERT: ${userInsertionResultSet?.executionInfo?.queryTrace}\nTIME: ${userInsertionResultSet?.executionInfo?.queryTrace?.durationMicros}" }
+            logger.debug { "${userInsertionResultSet?.executionInfo?.queryTrace}\nTIME: ${userInsertionResultSet?.executionInfo?.queryTrace?.durationMicros}" }
 
             val partitionKeyInsertionQuery = SimpleStatement.newInstance(
                 "INSERT INTO $keyspace.$USER_PARTITION_KEY_STORAGE (userId, partitionKey) VALUES ($userId, $partitionKey);"
@@ -211,9 +211,65 @@ class CassandraConnector(args: Array<String>) {
             }
 
             val partitionKeyInsertionResultSet = partitionKeyInsertionCompletionStage?.await()
-            logger.debug { "INSERT: ${partitionKeyInsertionResultSet?.executionInfo?.queryTrace}\nTIME: ${partitionKeyInsertionResultSet?.executionInfo?.queryTrace?.durationMicros}" }
+            logger.debug { "${partitionKeyInsertionResultSet?.executionInfo?.queryTrace}\nTIME: ${partitionKeyInsertionResultSet?.executionInfo?.queryTrace?.durationMicros}" }
 
             return userId.toString()
+        } catch (e: DriverTimeoutException) {
+            logger.error(e) { "ERROR" }
+            return null
+        } catch (e: QueryExecutionException) {
+            logger.error(e) { "ERROR" }
+            return null
+        } catch (e: QueryValidationException) {
+            logger.error(e) { "ERROR" }
+            return null
+        }
+    }
+
+    suspend fun getUserPreferences(userId:String): String? {
+        try {
+            val userInsertionQuery = SimpleStatement.newInstance(
+                "SELECT preferences FROM $keyspace.$USER WHERE userId = ${UUID.fromString(userId)}"
+            ).setTracing(true)
+
+            val asyncResultSetCompletionStage: CompletionStage<AsyncResultSet>? = databaseRequestRetry {
+                session!!.executeAsync(userInsertionQuery)
+            }
+
+            val resultSet = asyncResultSetCompletionStage?.await()
+
+            logger.debug { "${resultSet?.executionInfo?.queryTrace}\nTIME: ${resultSet?.executionInfo?.queryTrace?.durationMicros}" }
+
+            return resultSet?.one()?.getObject("preferences")?.toString()
+
+        } catch (e: DriverTimeoutException) {
+            logger.error(e) { "ERROR" }
+            return null
+        } catch (e: QueryExecutionException) {
+            logger.error(e) { "ERROR" }
+            return null
+        } catch (e: QueryValidationException) {
+            logger.error(e) { "ERROR" }
+            return null
+        }
+    }
+
+    suspend fun updateUserPreferences(userId:String, preferences: String): String? {
+        try {
+            val userInsertionQuery = SimpleStatement.newInstance(
+                "UPDATE $keyspace.$USER SET preferences = '$preferences' WHERE userId = ${UUID.fromString(userId)}"
+            ).setTracing(true)
+
+            val asyncResultSetCompletionStage: CompletionStage<AsyncResultSet>? = databaseRequestRetry {
+                session!!.executeAsync(userInsertionQuery)
+            }
+
+            val resultSet = asyncResultSetCompletionStage?.await()
+
+            logger.debug { "${resultSet?.executionInfo?.queryTrace}\nTIME: ${resultSet?.executionInfo?.queryTrace?.durationMicros}" }
+
+            return resultSet?.one()?.getObject("preferences")?.toString()
+
         } catch (e: DriverTimeoutException) {
             logger.error(e) { "ERROR" }
             return null
@@ -781,7 +837,7 @@ class CassandraConnector(args: Array<String>) {
         host = credentials.host
         dataCenter = credentials.dataCenter
         username = credentials.username
-        password = System.getenv(CASSANDRA_PASS)
+        password = "RkFosP24" // System.getenv(CASSANDRA_PASS)
         keyspace = getKeyspaceName("$FOLDER_PATH/$CUSTOM_JSON_FILE")
         port = credentials.port
     }

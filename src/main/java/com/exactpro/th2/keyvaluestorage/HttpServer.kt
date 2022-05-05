@@ -192,6 +192,26 @@ class HttpServer {
                     call.respond(HttpStatusCode.OK, "Hi! There is an empty response...")
                 }
 
+                get("/getUserPreferences") {
+                    val parameters = call.request.queryParameters
+                    if (parameters.contains(USER_ID)) {
+                        val userId = call.parameters[USER_ID].toString()
+                        if (cassandraConnector.checkUserIdExists(userId)) {
+                            call.respond(HttpStatusCode.OK, cassandraConnector.getUserPreferences(userId).toString())
+                        } else {
+                            call.respond(
+                                HttpStatusCode.Forbidden,
+                                "User with id $userId not registered"
+                            )
+                        }
+                    } else {
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            "Request should contain userId field"
+                        )
+                    }
+                }
+
                 get("/getWorkspaceLink") {
                     if (cassandraConnector.isCollectionExists(WORKSPACE_LINKS)) {
                         if (call.parameters.contains(ID) && call.parameters.contains(USER_ID)) {
@@ -323,6 +343,31 @@ class HttpServer {
                     }
                 }
 
+                post("/updateUserPreferences") {
+                    val jsonData = JSONObject(call.receive<String>())
+                    if (jsonData.length() > 0 && jsonData.has(PAYLOAD)
+                        && jsonData.has(USER_ID)
+                    ) {
+                        val userId = jsonData.getString(USER_ID)
+                        if (cassandraConnector.checkUserIdExists(userId)) {
+                            call.respond(
+                                HttpStatusCode.OK,
+                                cassandraConnector.updateUserPreferences(userId, jsonData.getString(PAYLOAD)).toString()
+                            )
+                        } else {
+                            call.respond(
+                                HttpStatusCode.Forbidden,
+                                "User with id $userId not registered"
+                            )
+                        }
+                    } else {
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            "Request should contain userId and payload fields"
+                        )
+                    }
+                }
+
                 post("registerUser") {
                     val jsonData = JSONObject(call.receive<String>())
                     if (jsonData.length() > 0 && jsonData.has(NAME)
@@ -331,7 +376,12 @@ class HttpServer {
                         cassandraConnector.createUserTableIfNotExists()
                         cassandraConnector.createPartitionKeyStorageIfNotExists()
                         if (!cassandraConnector.checkUserNameExists(name)) {
-                            val userId = cassandraConnector.registerUser(name)
+                            var userId: String?
+                            userId = if (jsonData.has(PREFERENCES)) {
+                                cassandraConnector.registerUser(name, jsonData.getString(PREFERENCES))
+                            } else {
+                                cassandraConnector.registerUser(name)
+                            }
                             if (!userId.isNullOrEmpty()) {
                                 call.respond(HttpStatusCode.OK, userId)
                             } else {
@@ -354,10 +404,8 @@ class HttpServer {
                     }
                 }
 
-                delete("/delete") {
-                    if (call.parameters.contains(ID) && call.parameters.contains(COLLECTION) && call.parameters.contains(
-                            USER_ID
-                        )
+                delete("/deleteRecordFromCollection") {
+                    if (call.parameters.contains(ID) && call.parameters.contains(COLLECTION) && call.parameters.contains(USER_ID)
                     ) {
                         val collection = call.parameters[COLLECTION].toString().toLowerCase()
                         val id = call.parameters[ID].toString()

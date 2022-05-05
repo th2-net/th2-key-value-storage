@@ -31,3 +31,21 @@ const val CRADLE_CONFIDENTIAL_FILE_NAME = "cradle.json"
 const val CUSTOM_JSON_FILE = "custom.json"
 const val USER_ID = "userId"
 const val DB_RETRY_DELAY: Long = 3000
+const val PREFERENCES = "preferences"
+const val DEFAULT_USER_PREFERENCES:String = "{messageDisplayRules: {rootRule: {" +
+        "editableSession: false," +
+        "editableType: true," +
+        "id: \'root\'," +
+        "removable: false," +
+        "session: \'*\'," +
+        "viewType: \'json\'," +
+        "}," +
+        "rules: []," +
+        "}," +
+        "messageBodySortOrder: []," +
+        "pinned: {" +
+        "events: []," +
+        "messages: []," +
+        "}," +
+        "lastSearchedSessions: []," +
+        "}"
