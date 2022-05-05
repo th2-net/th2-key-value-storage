@@ -837,7 +837,7 @@ class CassandraConnector(args: Array<String>) {
         host = credentials.host
         dataCenter = credentials.dataCenter
         username = credentials.username
-        password = "RkFosP24" // System.getenv(CASSANDRA_PASS)
+        password = System.getenv(CASSANDRA_PASS)
         keyspace = getKeyspaceName("$FOLDER_PATH/$CUSTOM_JSON_FILE")
         port = credentials.port
     }
