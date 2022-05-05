@@ -51,7 +51,7 @@ class CassandraConnector(args: Array<String>) {
     companion object {
         private val logger = KotlinLogging.logger {}
         private val CASSANDRA_PASS = "CASSANDRA_PASS"
-        private val FOLDER_PATH = "config"
+        private val FOLDER_PATH = "configs"
     }
 
     private suspend fun <T> databaseRequestRetry(request: () -> T): T? {
